@@ -15,6 +15,13 @@
       "when": 1774469728558,
       "tag": "0001_material_jubilee",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1774470873773,
+      "tag": "0002_black_titania",
+      "breakpoints": true
     }
   ]
 }

@@ -5,13 +5,14 @@ import {
   systemMetrics,
   interfaceMetrics,
   firewallMetrics,
+  latencyMetrics,
 } from "@/db/schema";
 import { eq, gte, desc, and } from "drizzle-orm";
 import {
   collectAllMetrics,
-  testConnection,
   type MikroTikDevice,
 } from "@/lib/mikrotik";
+import { pingHost } from "@/lib/ping";
 
 export async function POST(request: NextRequest) {
   try {
@@ -46,7 +47,11 @@ export async function POST(request: NextRequest) {
       encryptedPassword: device.encryptedPassword,
     };
 
-    const metrics = await collectAllMetrics(mikrotikDevice);
+    const [metrics, ping] = await Promise.all([
+      collectAllMetrics(mikrotikDevice),
+      pingHost(device.host, 5),
+    ]);
+
     const now = new Date();
 
     if (metrics.system) {
@@ -85,12 +90,22 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    await db.insert(latencyMetrics).values({
+      deviceId: device.id,
+      rttMin: ping.rttMin,
+      rttAvg: ping.rttAvg,
+      rttMax: ping.rttMax,
+      packetLoss: ping.packetLoss,
+      jitter: ping.jitter,
+      timestamp: now,
+    });
+
     await db
       .update(devices)
       .set({ status: "online", lastSeen: now, updatedAt: now })
       .where(eq(devices.id, device.id));
 
-    return NextResponse.json({ success: true, metrics });
+    return NextResponse.json({ success: true, metrics, ping });
   } catch (error) {
     return NextResponse.json(
       {
@@ -118,46 +133,65 @@ export async function GET(request: NextRequest) {
     const id = parseInt(deviceId, 10);
     const since = new Date(Date.now() - hours * 60 * 60 * 1000);
 
-    const systemData = await db
-      .select()
-      .from(systemMetrics)
-      .where(
-        and(
-          eq(systemMetrics.deviceId, id),
-          gte(systemMetrics.timestamp, since)
-        )
-      )
-      .orderBy(desc(systemMetrics.timestamp))
-      .limit(500);
+    const [systemData, interfaceData, firewallData, latencyData] =
+      await Promise.all([
+        db
+          .select()
+          .from(systemMetrics)
+          .where(
+            and(
+              eq(systemMetrics.deviceId, id),
+              gte(systemMetrics.timestamp, since)
+            )
+          )
+          .orderBy(desc(systemMetrics.timestamp))
+          .limit(500),
+        db
+          .select()
+          .from(interfaceMetrics)
+          .where(
+            and(
+              eq(interfaceMetrics.deviceId, id),
+              gte(interfaceMetrics.timestamp, since)
+            )
+          )
+          .orderBy(desc(interfaceMetrics.timestamp))
+          .limit(1000),
+        db
+          .select()
+          .from(firewallMetrics)
+          .where(
+            and(
+              eq(firewallMetrics.deviceId, id),
+              gte(firewallMetrics.timestamp, since)
+            )
+          )
+          .orderBy(desc(firewallMetrics.timestamp))
+          .limit(500),
+        db
+          .select()
+          .from(latencyMetrics)
+          .where(
+            and(
+              eq(latencyMetrics.deviceId, id),
+              gte(latencyMetrics.timestamp, since)
+            )
+          )
+          .orderBy(desc(latencyMetrics.timestamp))
+          .limit(500),
+      ]);
 
-    const interfaceData = await db
-      .select()
-      .from(interfaceMetrics)
-      .where(
-        and(
-          eq(interfaceMetrics.deviceId, id),
-          gte(interfaceMetrics.timestamp, since)
-        )
-      )
-      .orderBy(desc(interfaceMetrics.timestamp))
-      .limit(1000);
-
-    const firewallData = await db
-      .select()
-      .from(firewallMetrics)
-      .where(
-        and(
-          eq(firewallMetrics.deviceId, id),
-          gte(firewallMetrics.timestamp, since)
-        )
-      )
-      .orderBy(desc(firewallMetrics.timestamp))
-      .limit(500);
+    const [device] = await db
+      .select({ wanInterfaceName: devices.wanInterfaceName })
+      .from(devices)
+      .where(eq(devices.id, id));
 
     return NextResponse.json({
       system: systemData,
       interfaces: interfaceData,
       firewall: firewallData,
+      latency: latencyData,
+      wanInterfaceName: device?.wanInterfaceName || null,
     });
   } catch (error) {
     return NextResponse.json(

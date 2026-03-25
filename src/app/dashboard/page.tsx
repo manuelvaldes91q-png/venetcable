@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { TopNav } from "@/components/ui/TopNav";
 import { MetricLineChart, MetricAreaChart, MetricBarChart } from "@/components/ui/Charts";
-import { StatCard, DeviceCard } from "@/components/ui/Cards";
+import { DeviceCard } from "@/components/ui/Cards";
 import { formatBytes } from "@/lib/utils";
 
 interface DashboardDevice {
@@ -13,6 +13,7 @@ interface DashboardDevice {
   port: number;
   status: string;
   routerosVersion: string | null;
+  wanInterfaceName: string | null;
   lastSeen: string | null;
   system: {
     cpuLoad: number;
@@ -35,6 +36,20 @@ interface DashboardDevice {
     natRules: number;
     mangleRules: number;
   } | null;
+  latency: {
+    rttMin: number;
+    rttAvg: number;
+    rttMax: number;
+    packetLoss: number;
+    jitter: number;
+    timestamp: string;
+  } | null;
+  prevInterfaces: {
+    interfaceName: string;
+    rxBytes: number;
+    txBytes: number;
+    timestamp: string;
+  }[];
 }
 
 interface DashboardData {
@@ -47,27 +62,11 @@ interface DashboardData {
 }
 
 interface MetricHistory {
-  system: {
-    cpuLoad: number;
-    freeMemory: number;
-    totalMemory: number;
-    uptime: string;
-    timestamp: string;
-  }[];
-  interfaces: {
-    interfaceName: string;
-    rxBytes: number;
-    txBytes: number;
-    timestamp: string;
-  }[];
-  firewall: {
-    totalRules: number;
-    fasttrackRules: number;
-    filterRules: number;
-    natRules: number;
-    mangleRules: number;
-    timestamp: string;
-  }[];
+  system: { cpuLoad: number; freeMemory: number; totalMemory: number; uptime: string; timestamp: string }[];
+  interfaces: { interfaceName: string; rxBytes: number; txBytes: number; timestamp: string }[];
+  firewall: { totalRules: number; fasttrackRules: number; filterRules: number; natRules: number; mangleRules: number; timestamp: string }[];
+  latency: { rttMin: number; rttAvg: number; rttMax: number; packetLoss: number; jitter: number; timestamp: string }[];
+  wanInterfaceName: string | null;
 }
 
 function formatTime(ts: string) {
@@ -79,12 +78,42 @@ function formatTime(ts: string) {
   }
 }
 
+function getLatencyColor(ms: number): string {
+  if (ms <= 30) return "#73bf69";
+  if (ms <= 80) return "#6e9fff";
+  if (ms <= 150) return "#ff9830";
+  return "#f2495c";
+}
+
+function getLatencyLabel(ms: number): string {
+  if (ms <= 30) return "Excelente";
+  if (ms <= 80) return "Buena";
+  if (ms <= 150) return "Regular";
+  return "Alta";
+}
+
+function WanGauge({ label, value, unit, color }: { label: string; value: string | number; unit: string; color: string }) {
+  return (
+    <div className="text-center">
+      <p style={{ fontSize: "9px", color: "#5a5f6a", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "4px" }}>
+        {label}
+      </p>
+      <p style={{ fontSize: "24px", fontWeight: 700, color, fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
+        {value}
+      </p>
+      <p style={{ fontSize: "10px", color: "#5a5f6a" }}>{unit}</p>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [selectedDevice, setSelectedDevice] = useState<number | null>(null);
   const [metricHistory, setMetricHistory] = useState<MetricHistory | null>(null);
   const [collecting, setCollecting] = useState<Record<number, boolean>>({});
   const [loading, setLoading] = useState(true);
+  const [wanInput, setWanInput] = useState("");
+  const [savingWan, setSavingWan] = useState(false);
 
   const fetchDashboard = useCallback(async () => {
     try {
@@ -126,6 +155,11 @@ export default function DashboardPage() {
     }
   }, [selectedDevice, fetchMetricHistory]);
 
+  useEffect(() => {
+    const dev = dashboardData?.devices.find((d) => d.id === selectedDevice);
+    setWanInput(dev?.wanInterfaceName || "");
+  }, [selectedDevice, dashboardData]);
+
   const collectMetrics = async (deviceId: number) => {
     setCollecting((p) => ({ ...p, [deviceId]: true }));
     try {
@@ -142,13 +176,26 @@ export default function DashboardPage() {
     }
   };
 
+  const saveWanInterface = async () => {
+    if (!selectedDevice) return;
+    setSavingWan(true);
+    try {
+      await fetch("/api/devices", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: selectedDevice, wanInterfaceName: wanInput }),
+      });
+      await fetchDashboard();
+    } catch {
+    } finally {
+      setSavingWan(false);
+    }
+  };
+
   const deleteDevice = async (deviceId: number) => {
     try {
       await fetch(`/api/devices?id=${deviceId}`, { method: "DELETE" });
-      if (selectedDevice === deviceId) {
-        setSelectedDevice(null);
-        setMetricHistory(null);
-      }
+      if (selectedDevice === deviceId) { setSelectedDevice(null); setMetricHistory(null); }
       await fetchDashboard();
     } catch {}
   };
@@ -163,17 +210,66 @@ export default function DashboardPage() {
 
   const summary = dashboardData?.summary || { totalDevices: 0, onlineDevices: 0, offlineDevices: 0 };
   const devices = dashboardData?.devices || [];
-  const selectedDeviceData = devices.find((d) => d.id === selectedDevice);
+  const sel = devices.find((d) => d.id === selectedDevice);
+
+  const wanInterface = sel?.interfaces.find(
+    (i) => i.interfaceName === sel?.wanInterfaceName
+  );
+  const prevWanInterface = sel?.prevInterfaces?.find(
+    (i) => i.interfaceName === sel?.wanInterfaceName && i.timestamp !== wanInterface?.timestamp
+  );
+
+  let wanRxRate = 0;
+  let wanTxRate = 0;
+  if (wanInterface && prevWanInterface) {
+    const dtSec = Math.max(
+      1,
+      (new Date(wanInterface.timestamp).getTime() - new Date(prevWanInterface.timestamp).getTime()) / 1000
+    );
+    wanRxRate = Math.max(0, (wanInterface.rxBytes - prevWanInterface.rxBytes) / dtSec);
+    wanTxRate = Math.max(0, (wanInterface.txBytes - prevWanInterface.txBytes) / dtSec);
+  }
 
   const cpuChartData = metricHistory?.system?.slice().reverse().map((s) => ({
-    timestamp: formatTime(s.timestamp),
-    "CPU %": s.cpuLoad,
+    timestamp: formatTime(s.timestamp), "CPU %": s.cpuLoad,
   })) || [];
 
   const memoryChartData = metricHistory?.system?.slice().reverse().map((s) => ({
     timestamp: formatTime(s.timestamp),
     "Usado (MB)": parseFloat(((s.totalMemory - s.freeMemory) / 1024 / 1024).toFixed(1)),
     "Libre (MB)": parseFloat((s.freeMemory / 1024 / 1024).toFixed(1)),
+  })) || [];
+
+  const wanTrafficChart: { timestamp: string; "Rx (Mbps)": number; "Tx (Mbps)": number }[] = [];
+  const wanName = metricHistory?.wanInterfaceName || sel?.wanInterfaceName;
+  if (wanName && metricHistory?.interfaces) {
+    const wanData = metricHistory.interfaces
+      .filter((i) => i.interfaceName === wanName)
+      .slice()
+      .reverse();
+    for (let i = 1; i < wanData.length; i++) {
+      const dt = Math.max(1, (new Date(wanData[i].timestamp).getTime() - new Date(wanData[i - 1].timestamp).getTime()) / 1000);
+      const rxMbps = parseFloat(((wanData[i].rxBytes - wanData[i - 1].rxBytes) * 8 / dt / 1_000_000).toFixed(2));
+      const txMbps = parseFloat(((wanData[i].txBytes - wanData[i - 1].txBytes) * 8 / dt / 1_000_000).toFixed(2));
+      wanTrafficChart.push({
+        timestamp: formatTime(wanData[i].timestamp),
+        "Rx (Mbps)": Math.max(0, rxMbps),
+        "Tx (Mbps)": Math.max(0, txMbps),
+      });
+    }
+  }
+
+  const latencyChartData = metricHistory?.latency?.slice().reverse().map((l) => ({
+    timestamp: formatTime(l.timestamp),
+    "RTT (ms)": l.rttAvg,
+    "Min": l.rttMin,
+    "Max": l.rttMax,
+  })) || [];
+
+  const packetLossChartData = metricHistory?.latency?.slice().reverse().map((l) => ({
+    timestamp: formatTime(l.timestamp),
+    "Pérdida %": l.packetLoss,
+    "Jitter (ms)": l.jitter,
   })) || [];
 
   const trafficByInterface: Record<string, { timestamp: string; Rx: number; Tx: number }[]> = {};
@@ -187,70 +283,49 @@ export default function DashboardPage() {
   });
 
   const firewallChartData = metricHistory?.firewall?.slice().reverse().map((f) => ({
-    timestamp: formatTime(f.timestamp),
-    Filtro: f.filterRules,
-    NAT: f.natRules,
-    Mangle: f.mangleRules,
-    Fasttrack: f.fasttrackRules,
+    timestamp: formatTime(f.timestamp), Filtro: f.filterRules, NAT: f.natRules, Mangle: f.mangleRules, Fasttrack: f.fasttrackRules,
   })) || [];
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "#0b0c0e" }}>
       <TopNav />
-
       <main style={{ maxWidth: 1400, margin: "0 auto", padding: "24px" }}>
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 style={{ fontSize: "20px", fontWeight: 600, color: "#e0e0e0" }}>
-              Resumen del Sistema
-            </h1>
-            <p style={{ fontSize: "12px", color: "#5a5f6a", marginTop: "2px" }}>
-              Monitoreo de dispositivos MikroTik en tiempo real
-            </p>
+            <h1 style={{ fontSize: "20px", fontWeight: 600, color: "#e0e0e0" }}>Panel Principal</h1>
+            <p style={{ fontSize: "12px", color: "#5a5f6a" }}>Monitoreo de red MikroTik en tiempo real</p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-          <StatCard
-            title="Dispositivos"
-            value={summary.totalDevices}
-            subtitle="Total registrados"
-          />
-          <StatCard
-            title="En Línea"
-            value={summary.onlineDevices}
-            subtitle="Conectados"
-          />
-          <StatCard
-            title="Fuera de Línea"
-            value={summary.offlineDevices}
-            subtitle="Sin conexión"
-          />
-          <StatCard
-            title="Uptime Promedio"
-            value={devices.filter((d) => d.system).length > 0
-              ? devices.filter((d) => d.system).map((d) => d.system!.uptime).join(", ").substring(0, 12) || "—"
-              : "—"
-            }
-          />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+          <div className="panel"><div className="panel-body text-center">
+            <p style={{ fontSize: "10px", color: "#5a5f6a", textTransform: "uppercase", letterSpacing: "0.04em" }}>Dispositivos</p>
+            <p style={{ fontSize: "28px", fontWeight: 700, color: "#e0e0e0", fontVariantNumeric: "tabular-nums" }}>{summary.totalDevices}</p>
+          </div></div>
+          <div className="panel"><div className="panel-body text-center">
+            <p style={{ fontSize: "10px", color: "#5a5f6a", textTransform: "uppercase", letterSpacing: "0.04em" }}>En Línea</p>
+            <p style={{ fontSize: "28px", fontWeight: 700, color: "#73bf69", fontVariantNumeric: "tabular-nums" }}>{summary.onlineDevices}</p>
+          </div></div>
+          <div className="panel"><div className="panel-body text-center">
+            <p style={{ fontSize: "10px", color: "#5a5f6a", textTransform: "uppercase", letterSpacing: "0.04em" }}>Fuera de Línea</p>
+            <p style={{ fontSize: "28px", fontWeight: 700, color: "#f2495c", fontVariantNumeric: "tabular-nums" }}>{summary.offlineDevices}</p>
+          </div></div>
+          <div className="panel"><div className="panel-body text-center">
+            <p style={{ fontSize: "10px", color: "#5a5f6a", textTransform: "uppercase", letterSpacing: "0.04em" }}>Latencia WAN</p>
+            <p style={{ fontSize: "28px", fontWeight: 700, color: sel?.latency ? getLatencyColor(sel.latency.rttAvg) : "#5a5f6a", fontVariantNumeric: "tabular-nums" }}>
+              {sel?.latency ? `${sel.latency.rttAvg}` : "—"}
+            </p>
+            {sel?.latency && <p style={{ fontSize: "10px", color: "#5a5f6a" }}>ms</p>}
+          </div></div>
         </div>
 
         {devices.length === 0 ? (
           <div className="panel" style={{ textAlign: "center", padding: "48px 24px" }}>
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#5a5f6a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ margin: "0 auto 12px" }}>
-              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-              <line x1="8" y1="21" x2="16" y2="21"/>
-              <line x1="12" y1="17" x2="12" y2="21"/>
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
             </svg>
-            <p style={{ color: "#8e8e8e", fontSize: "14px", marginBottom: "4px" }}>
-              No hay dispositivos configurados
-            </p>
-            <p style={{ color: "#5a5f6a", fontSize: "12px" }}>
-              Agregue su primer dispositivo MikroTik para comenzar el monitoreo.
-            </p>
-            <a href="/dashboard/devices" className="btn-primary" style={{ display: "inline-block", marginTop: "16px" }}>
-              Agregar Dispositivo
-            </a>
+            <p style={{ color: "#8e8e8e", fontSize: "14px" }}>No hay dispositivos configurados</p>
+            <a href="/dashboard/devices" className="btn-primary" style={{ display: "inline-block", marginTop: "16px" }}>Agregar Dispositivo</a>
           </div>
         ) : (
           <>
@@ -260,22 +335,15 @@ export default function DashboardPage() {
                   key={device.id}
                   onClick={() => setSelectedDevice(device.id)}
                   style={{
-                    cursor: "pointer",
-                    borderRadius: "4px",
-                    transition: "outline 0.15s ease",
+                    cursor: "pointer", borderRadius: "4px",
                     outline: selectedDevice === device.id ? "2px solid #3b82f6" : "2px solid transparent",
-                    outlineOffset: "-1px",
+                    outlineOffset: "-1px", transition: "outline 0.15s ease",
                   }}
                 >
                   <DeviceCard
-                    name={device.name}
-                    host={device.host}
-                    port={device.port}
-                    status={device.status}
-                    cpuLoad={device.system?.cpuLoad}
-                    freeMemory={device.system?.freeMemory}
-                    totalMemory={device.system?.totalMemory}
-                    uptime={device.system?.uptime}
+                    name={device.name} host={device.host} port={device.port} status={device.status}
+                    cpuLoad={device.system?.cpuLoad} freeMemory={device.system?.freeMemory}
+                    totalMemory={device.system?.totalMemory} uptime={device.system?.uptime}
                     routerosVersion={device.routerosVersion || undefined}
                     onCollectMetrics={() => collectMetrics(device.id)}
                     onDelete={() => deleteDevice(device.id)}
@@ -285,15 +353,176 @@ export default function DashboardPage() {
               ))}
             </div>
 
-            {selectedDeviceData && metricHistory && (
+            {sel && (
               <div>
                 <div className="flex items-center gap-2 mb-4">
-                  <h2 style={{ fontSize: "16px", fontWeight: 600, color: "#e0e0e0" }}>
-                    {selectedDeviceData.name}
-                  </h2>
-                  <span style={{ color: "#5a5f6a", fontSize: "13px" }}>
-                    — Histórico (24h)
-                  </span>
+                  <h2 style={{ fontSize: "16px", fontWeight: 600, color: "#e0e0e0" }}>{sel.name}</h2>
+                  <span style={{ color: "#5a5f6a", fontSize: "13px" }}>— Detalles del Dispositivo</span>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+                  <div className="panel">
+                    <div className="panel-header">
+                      <div className="flex items-center justify-between w-full">
+                        <h3 style={{ fontSize: "13px", fontWeight: 600, color: "#d8d9da" }}>Tráfico WAN</h3>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={wanInput}
+                            onChange={(e) => setWanInput(e.target.value)}
+                            placeholder="eth1, ether1, pppoe-out1..."
+                            className="input-field"
+                            style={{ width: 180, fontSize: "11px", padding: "3px 8px" }}
+                          />
+                          <button
+                            onClick={saveWanInterface}
+                            disabled={savingWan}
+                            className="btn-primary"
+                            style={{ padding: "3px 10px", fontSize: "10px" }}
+                          >
+                            {savingWan ? "..." : "Guardar"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="panel-body">
+                      {wanInterface ? (
+                        <>
+                          <div className="flex justify-around mb-4">
+                            <WanGauge
+                              label="Descarga (Rx)"
+                              value={wanRxRate > 1_000_000 ? (wanRxRate / 1_000_000).toFixed(1) : wanRxRate > 1_000 ? (wanRxRate / 1_000).toFixed(0) : wanRxRate.toFixed(0)}
+                              unit={wanRxRate > 1_000_000 ? "Mbps" : wanRxRate > 1_000 ? "Kbps" : "bps"}
+                              color="#b877d9"
+                            />
+                            <WanGauge
+                              label="Subida (Tx)"
+                              value={wanTxRate > 1_000_000 ? (wanTxRate / 1_000_000).toFixed(1) : wanTxRate > 1_000 ? (wanTxRate / 1_000).toFixed(0) : wanTxRate.toFixed(0)}
+                              unit={wanTxRate > 1_000_000 ? "Mbps" : wanTxRate > 1_000 ? "Kbps" : "bps"}
+                              color="#ff9830"
+                            />
+                            <WanGauge
+                              label="Rx Total"
+                              value={formatBytes(wanInterface.rxBytes).split(" ")[0]}
+                              unit={formatBytes(wanInterface.rxBytes).split(" ")[1]}
+                              color="#6e9fff"
+                            />
+                            <WanGauge
+                              label="Tx Total"
+                              value={formatBytes(wanInterface.txBytes).split(" ")[0]}
+                              unit={formatBytes(wanInterface.txBytes).split(" ")[1]}
+                              color="#6e9fff"
+                            />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`status-dot ${wanInterface.status === "running" ? "status-dot-online" : "status-dot-offline"}`} />
+                            <span style={{ fontSize: "11px", color: "#8e8e8e" }}>
+                              {wanName} — {wanInterface.status === "running" ? "Activo" : "Inactivo"}
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ textAlign: "center", padding: "20px 0" }}>
+                          <p style={{ fontSize: "12px", color: "#5a5f6a", marginBottom: "8px" }}>
+                            Configure la interfaz WAN para ver el tráfico
+                          </p>
+                          {sel.interfaces.length > 0 && (
+                            <div className="flex flex-wrap gap-1 justify-center">
+                              {sel.interfaces.map((i) => (
+                                <button
+                                  key={i.interfaceName}
+                                  onClick={() => { setWanInput(i.interfaceName); }}
+                                  className="btn-secondary"
+                                  style={{ padding: "2px 8px", fontSize: "10px" }}
+                                >
+                                  {i.interfaceName}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="panel">
+                    <div className="panel-header">
+                      <h3 style={{ fontSize: "13px", fontWeight: 600, color: "#d8d9da" }}>Latencia</h3>
+                    </div>
+                    <div className="panel-body">
+                      {sel.latency ? (
+                        <div className="flex justify-around">
+                          <WanGauge
+                            label="RTT Promedio"
+                            value={sel.latency.rttAvg}
+                            unit="ms"
+                            color={getLatencyColor(sel.latency.rttAvg)}
+                          />
+                          <div className="text-center">
+                            <p style={{ fontSize: "9px", color: "#5a5f6a", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "4px" }}>Calidad</p>
+                            <p style={{ fontSize: "14px", fontWeight: 700, color: getLatencyColor(sel.latency.rttAvg) }}>
+                              {getLatencyLabel(sel.latency.rttAvg)}
+                            </p>
+                          </div>
+                          <WanGauge
+                            label="Pérdida"
+                            value={sel.latency.packetLoss}
+                            unit="%"
+                            color={sel.latency.packetLoss > 5 ? "#f2495c" : sel.latency.packetLoss > 0 ? "#ff9830" : "#73bf69"}
+                          />
+                          <WanGauge
+                            label="Jitter"
+                            value={sel.latency.jitter}
+                            unit="ms"
+                            color={sel.latency.jitter > 20 ? "#ff9830" : "#73bf69"}
+                          />
+                        </div>
+                      ) : (
+                        <div style={{ textAlign: "center", padding: "20px 0" }}>
+                          <p style={{ fontSize: "12px", color: "#5a5f6a" }}>
+                            Presione &quot;Recolectar&quot; para medir latencia
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {wanTrafficChart.length > 0 && (
+                  <div className="mb-4">
+                    <MetricAreaChart
+                      data={wanTrafficChart}
+                      dataKeys={[
+                        { key: "Rx (Mbps)", color: "#b877d9", name: "Descarga" },
+                        { key: "Tx (Mbps)", color: "#ff9830", name: "Subida" },
+                      ]}
+                      title={`Tráfico WAN — ${wanName}`}
+                    />
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+                  {latencyChartData.length > 0 && (
+                    <MetricLineChart
+                      data={latencyChartData}
+                      dataKeys={[
+                        { key: "RTT (ms)", color: "#3b82f6", name: "Promedio" },
+                        { key: "Min", color: "#73bf69", name: "Mínimo" },
+                        { key: "Max", color: "#f2495c", name: "Máximo" },
+                      ]}
+                      title="Latencia (RTT)"
+                    />
+                  )}
+                  {packetLossChartData.length > 0 && (
+                    <MetricAreaChart
+                      data={packetLossChartData}
+                      dataKeys={[
+                        { key: "Pérdida %", color: "#f2495c", name: "Pérdida de Paquetes" },
+                        { key: "Jitter (ms)", color: "#ff9830", name: "Jitter" },
+                      ]}
+                      title="Pérdida de Paquetes y Jitter"
+                    />
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
@@ -316,7 +545,7 @@ export default function DashboardPage() {
                   )}
                 </div>
 
-                {Object.entries(trafficByInterface).map(([ifaceName, data]) =>
+                {Object.entries(trafficByInterface).filter(([name]) => name !== wanName).map(([ifaceName, data]) =>
                   data.length > 0 ? (
                     <div key={ifaceName} className="mb-4">
                       <MetricAreaChart
@@ -325,7 +554,7 @@ export default function DashboardPage() {
                           { key: "Rx", color: "#b877d9", name: "Rx (MB)" },
                           { key: "Tx", color: "#ff9830", name: "Tx (MB)" },
                         ]}
-                        title={`Tráfico de Interfaz — ${ifaceName}`}
+                        title={`Tráfico — ${ifaceName}`}
                       />
                     </div>
                   ) : null
@@ -346,29 +575,23 @@ export default function DashboardPage() {
                   </div>
                 )}
 
-                {selectedDeviceData.firewall && (
+                {sel.firewall && (
                   <div className="panel mb-4">
                     <div className="panel-header">
-                      <h3 style={{ fontSize: "13px", fontWeight: 600, color: "#d8d9da" }}>
-                        Resumen de Firewall
-                      </h3>
+                      <h3 style={{ fontSize: "13px", fontWeight: 600, color: "#d8d9da" }}>Resumen de Firewall</h3>
                     </div>
                     <div className="panel-body">
                       <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
                         {[
-                          { label: "Total Reglas", value: selectedDeviceData.firewall.totalRules, color: "#e0e0e0" },
-                          { label: "Filtro", value: selectedDeviceData.firewall.filterRules, color: "#3b82f6" },
-                          { label: "NAT", value: selectedDeviceData.firewall.natRules, color: "#73bf69" },
-                          { label: "Mangle", value: selectedDeviceData.firewall.mangleRules, color: "#ff9830" },
-                          { label: "Fasttrack", value: selectedDeviceData.firewall.fasttrackRules, color: "#f2495c" },
+                          { label: "Total", value: sel.firewall.totalRules, color: "#e0e0e0" },
+                          { label: "Filtro", value: sel.firewall.filterRules, color: "#3b82f6" },
+                          { label: "NAT", value: sel.firewall.natRules, color: "#73bf69" },
+                          { label: "Mangle", value: sel.firewall.mangleRules, color: "#ff9830" },
+                          { label: "Fasttrack", value: sel.firewall.fasttrackRules, color: "#f2495c" },
                         ].map((item) => (
                           <div key={item.label} className="text-center">
-                            <p style={{ fontSize: "11px", color: "#5a5f6a", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                              {item.label}
-                            </p>
-                            <p style={{ fontSize: "22px", fontWeight: 700, color: item.color, fontVariantNumeric: "tabular-nums" }}>
-                              {item.value}
-                            </p>
+                            <p style={{ fontSize: "10px", color: "#5a5f6a", textTransform: "uppercase", letterSpacing: "0.04em" }}>{item.label}</p>
+                            <p style={{ fontSize: "22px", fontWeight: 700, color: item.color, fontVariantNumeric: "tabular-nums" }}>{item.value}</p>
                           </div>
                         ))}
                       </div>
@@ -376,76 +599,44 @@ export default function DashboardPage() {
                   </div>
                 )}
 
-                {selectedDeviceData.interfaces.length > 0 && (
+                {sel.interfaces.length > 0 && (
                   <div className="panel">
                     <div className="panel-header">
-                      <h3 style={{ fontSize: "13px", fontWeight: 600, color: "#d8d9da" }}>
-                        Interfaces de Red
-                      </h3>
+                      <h3 style={{ fontSize: "13px", fontWeight: 600, color: "#d8d9da" }}>Interfaces de Red</h3>
                     </div>
                     <div className="panel-body" style={{ padding: 0 }}>
-                      <div className="overflow-x-auto">
-                        <table style={{ width: "100%", fontSize: "12px" }}>
-                          <thead>
-                            <tr style={{ borderBottom: "1px solid #2c3039" }}>
-                              {["Nombre", "Estado", "Rx", "Tx"].map((h) => (
-                                <th
-                                  key={h}
-                                  style={{
-                                    padding: "10px 16px",
-                                    textAlign: "left",
-                                    color: "#5a5f6a",
-                                    fontWeight: 600,
-                                    fontSize: "11px",
-                                    textTransform: "uppercase",
-                                    letterSpacing: "0.04em",
-                                  }}
-                                >
-                                  {h}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {selectedDeviceData.interfaces.map((iface, i) => (
-                              <tr
-                                key={i}
-                                style={{
-                                  borderBottom: "1px solid #1e2028",
-                                  transition: "background-color 0.1s",
-                                }}
-                                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.02)")}
-                                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-                              >
-                                <td style={{ padding: "8px 16px", color: "#d8d9da", fontWeight: 500 }}>
-                                  {iface.interfaceName}
-                                </td>
-                                <td style={{ padding: "8px 16px" }}>
-                                  <span
-                                    className="inline-flex items-center gap-1.5"
-                                    style={{
-                                      color: iface.status === "running" ? "#73bf69" : "#5a5f6a",
-                                      fontSize: "11px",
-                                    }}
-                                  >
-                                    <span
-                                      className={`status-dot ${iface.status === "running" ? "status-dot-online" : "status-dot-offline"}`}
-                                      style={{ width: 6, height: 6 }}
-                                    />
-                                    {iface.status === "running" ? "Activo" : "Detenido"}
-                                  </span>
-                                </td>
-                                <td style={{ padding: "8px 16px", color: "#8e8e8e", fontVariantNumeric: "tabular-nums" }}>
-                                  {formatBytes(iface.rxBytes)}
-                                </td>
-                                <td style={{ padding: "8px 16px", color: "#8e8e8e", fontVariantNumeric: "tabular-nums" }}>
-                                  {formatBytes(iface.txBytes)}
-                                </td>
-                              </tr>
+                      <table style={{ width: "100%", fontSize: "12px" }}>
+                        <thead>
+                          <tr style={{ borderBottom: "1px solid #2c3039" }}>
+                            {["Nombre", "Estado", "Rx", "Tx"].map((h) => (
+                              <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: "#5a5f6a", fontWeight: 600, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.04em" }}>{h}</th>
                             ))}
-                          </tbody>
-                        </table>
-                      </div>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sel.interfaces.map((iface, i) => (
+                            <tr key={i} style={{ borderBottom: "1px solid #1e2028" }}
+                              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.02)")}
+                              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                            >
+                              <td style={{ padding: "8px 16px", color: "#d8d9da", fontWeight: 500 }}>
+                                {iface.interfaceName}
+                                {iface.interfaceName === wanName && (
+                                  <span style={{ marginLeft: 6, fontSize: "9px", color: "#ff9830", fontWeight: 700, backgroundColor: "rgba(255,152,48,0.1)", padding: "1px 4px", borderRadius: 2 }}>WAN</span>
+                                )}
+                              </td>
+                              <td style={{ padding: "8px 16px" }}>
+                                <span className="inline-flex items-center gap-1.5" style={{ color: iface.status === "running" ? "#73bf69" : "#5a5f6a", fontSize: "11px" }}>
+                                  <span className={`status-dot ${iface.status === "running" ? "status-dot-online" : "status-dot-offline"}`} style={{ width: 6, height: 6 }} />
+                                  {iface.status === "running" ? "Activo" : "Detenido"}
+                                </span>
+                              </td>
+                              <td style={{ padding: "8px 16px", color: "#8e8e8e", fontVariantNumeric: "tabular-nums" }}>{formatBytes(iface.rxBytes)}</td>
+                              <td style={{ padding: "8px 16px", color: "#8e8e8e", fontVariantNumeric: "tabular-nums" }}>{formatBytes(iface.txBytes)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 )}

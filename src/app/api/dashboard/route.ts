@@ -1,6 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { devices, systemMetrics, interfaceMetrics, firewallMetrics } from "@/db/schema";
+import {
+  devices,
+  systemMetrics,
+  interfaceMetrics,
+  firewallMetrics,
+  latencyMetrics,
+} from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 
 export async function GET() {
@@ -30,6 +36,20 @@ export async function GET() {
           .orderBy(desc(firewallMetrics.timestamp))
           .limit(1);
 
+        const [latestLatency] = await db
+          .select()
+          .from(latencyMetrics)
+          .where(eq(latencyMetrics.deviceId, device.id))
+          .orderBy(desc(latencyMetrics.timestamp))
+          .limit(1);
+
+        const prevInterfaces = await db
+          .select()
+          .from(interfaceMetrics)
+          .where(eq(interfaceMetrics.deviceId, device.id))
+          .orderBy(desc(interfaceMetrics.timestamp))
+          .limit(2);
+
         return {
           id: device.id,
           name: device.name,
@@ -37,10 +57,13 @@ export async function GET() {
           port: device.port,
           status: device.status,
           routerosVersion: device.routerosVersion,
+          wanInterfaceName: device.wanInterfaceName,
           lastSeen: device.lastSeen,
           system: latestSystem || null,
           interfaces: latestInterfaces,
           firewall: latestFirewall || null,
+          latency: latestLatency || null,
+          prevInterfaces: prevInterfaces,
         };
       })
     );
@@ -64,6 +87,32 @@ export async function GET() {
   } catch (error) {
     return NextResponse.json(
       { error: "Failed to fetch dashboard data" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { deviceId, wanInterfaceName } = body;
+
+    if (!deviceId) {
+      return NextResponse.json(
+        { error: "deviceId is required" },
+        { status: 400 }
+      );
+    }
+
+    await db
+      .update(devices)
+      .set({ wanInterfaceName: wanInterfaceName || null, updatedAt: new Date() })
+      .where(eq(devices.id, deviceId));
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json(
+      { error: "Failed to update device" },
       { status: 500 }
     );
   }

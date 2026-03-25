@@ -8,6 +8,7 @@ export const devices = sqliteTable("devices", {
   username: text("username").notNull(),
   encryptedPassword: text("encrypted_password").notNull(),
   routerosVersion: text("routeros_version").default("v6"),
+  wanInterfaceName: text("wan_interface_name"),
   status: text("status", { enum: ["online", "offline", "unknown"] })
     .notNull()
     .default("unknown"),
@@ -122,6 +123,21 @@ export const firewallMetrics = sqliteTable("firewall_metrics", {
   filterRules: integer("filter_rules").default(0),
   natRules: integer("nat_rules").default(0),
   mangleRules: integer("mangle_rules").default(0),
+  timestamp: integer("timestamp", { mode: "timestamp" }).$defaultFn(
+    () => new Date()
+  ),
+});
+
+export const latencyMetrics = sqliteTable("latency_metrics", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  deviceId: integer("device_id")
+    .notNull()
+    .references(() => devices.id, { onDelete: "cascade" }),
+  rttMin: real("rtt_min"),
+  rttAvg: real("rtt_avg"),
+  rttMax: real("rtt_max"),
+  packetLoss: real("packet_loss").default(0),
+  jitter: real("jitter"),
   timestamp: integer("timestamp", { mode: "timestamp" }).$defaultFn(
     () => new Date()
   ),

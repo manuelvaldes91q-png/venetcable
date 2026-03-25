@@ -77,6 +77,32 @@ export async function POST(request: NextRequest) {
   }
 }
 
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { id, wanInterfaceName } = body;
+
+    if (!id) {
+      return NextResponse.json(
+        { error: "Device ID is required" },
+        { status: 400 }
+      );
+    }
+
+    await db
+      .update(devices)
+      .set({ wanInterfaceName: wanInterfaceName || null, updatedAt: new Date() })
+      .where(eq(devices.id, id));
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json(
+      { error: "Failed to update device" },
+      { status: 500 }
+    );
+  }
+}
+
 export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);

@@ -2,7 +2,7 @@
 
 ## Current State
 
-**Status**: Panel de monitoreo profesional estilo Grafana, completamente en español, con dashboard de dispositivos MikroTik, monitoreo de antenas con entrada manual, y gráficos históricos.
+**Status**: Panel de monitoreo profesional estilo Grafana en español, con tráfico WAN en tiempo real, latencia/pérdida de paquetes, monitoreo de antenas, y gestión de dispositivos.
 
 ## Recently Completed
 
@@ -43,6 +43,16 @@
   - [x] Indicadores de estado con glow (verde/rojo/naranja)
   - [x] Interfaz 100% en español
   - [x] Componente TopNav compartido con reloj en vivo
+- [x] **Monitoreo WAN y Latencia**:
+  - [x] Campo `wanInterfaceName` en tabla devices para marcar interfaz WAN
+  - [x] Tabla `latency_metrics` (rttMin, rttAvg, rttMax, packetLoss, jitter)
+  - [x] Utilidad de ping (`src/lib/ping.ts`) con execFile ping nativo
+  - [x] Recolección de latencia paralela a métricas MikroTik
+  - [x] Panel de tráfico WAN con tasas Rx/Tx en tiempo real
+  - [x] Selector de interfaz WAN en el dashboard
+  - [x] Gráfico de tráfico WAN (Mbps descarga/subida)
+  - [x] Gráficos de latencia RTT (min/avg/max), pérdida de paquetes, jitter
+  - [x] Indicadores de calidad de latencia (Excelente/Buena/Regular/Alta)
 
 ## Current Structure
 
@@ -86,3 +96,4 @@
 | 2026-03-25 | MikroTik monitoring system full implementation |
 | 2026-03-25 | Antenna monitoring module with manual entry |
 | 2026-03-25 | Rediseño profesional estilo Grafana, UI en español |
+| 2026-03-25 | WAN traffic monitoring, latency/packet loss with ping |
