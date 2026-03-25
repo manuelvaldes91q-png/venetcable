@@ -1,120 +1,73 @@
-# System Patterns: Next.js Starter Template
+# System Patterns: MikroTik RouterOS v6 Monitoring System
 
 ## Architecture Overview
 
 ```
 src/
-├── app/                    # Next.js App Router
-│   ├── layout.tsx          # Root layout + metadata
-│   ├── page.tsx            # Home page
-│   ├── globals.css         # Tailwind imports + global styles
-│   └── favicon.ico         # Site icon
-└── (expand as needed)
-    ├── components/         # React components (add when needed)
-    ├── lib/                # Utilities and helpers (add when needed)
-    └── db/                 # Database files (add via recipe)
+├── app/                          # Next.js App Router
+│   ├── layout.tsx                # Root layout + metadata
+│   ├── page.tsx                  # Redirect to dashboard
+│   ├── globals.css               # Tailwind + dark theme
+│   ├── dashboard/
+│   │   ├── page.tsx              # Main monitoring dashboard
+│   │   └── devices/
+│   │       └── page.tsx          # Device management
+│   └── api/
+│       ├── devices/route.ts      # CRUD for devices
+│       ├── metrics/route.ts      # Metrics collection + history
+│       └── dashboard/route.ts    # Dashboard summary data
+├── components/
+│   └── ui/
+│       ├── Charts.tsx            # Recharts wrappers (Line, Area, Bar)
+│       └── Cards.tsx             # StatCard, DeviceCard
+├── db/
+│   ├── schema.ts                 # Drizzle schema (5 tables)
+│   ├── index.ts                  # Database client
+│   ├── migrate.ts                # Migration runner
+│   └── migrations/               # Generated SQL migrations
+└── lib/
+    ├── mikrotik.ts               # RouterOS API client wrapper
+    ├── crypto.ts                 # AES-256-GCM encryption
+    └── utils.ts                  # Formatting helpers
 ```
 
 ## Key Design Patterns
 
-### 1. App Router Pattern
+### 1. MikroTik API Integration Pattern
+Uses `node-routeros` for TCP API communication. Each metric type (system, interfaces, firewall) has a dedicated fetch function that:
+- Creates a connection per operation (no persistent connections)
+- Uses RouterOS v6 compatible commands (avoids v7-specific params)
+- Closes connections in `finally` blocks
+- Returns typed data structures
 
-Uses Next.js App Router with file-based routing:
+### 2. Encryption Pattern
+Credentials stored encrypted with AES-256-GCM:
+- IV generated per encryption
+- Auth tag for integrity verification
+- Key derived via scrypt from `MIKROTIK_ENCRYPTION_SECRET` env var
+- Format: `iv:tag:ciphertext`
+
+### 3. Data Collection Pattern
+- POST `/api/metrics` triggers on-demand collection
+- Metrics stored in SQLite with device foreign keys
+- 24-hour retention for historical queries
+- Auto-refresh on frontend (30s dashboard, 15s charts)
+
+### 4. Server Components by Default
+- API routes handle all DB and MikroTik operations
+- Dashboard is a client component for real-time updates
+- Device management is a client component for form handling
+
+## Database Schema
+
 ```
-src/app/
-├── page.tsx           # Route: /
-├── about/page.tsx     # Route: /about
-├── blog/
-│   ├── page.tsx       # Route: /blog
-│   └── [slug]/page.tsx # Route: /blog/:slug
-└── api/
-    └── route.ts       # API Route: /api
-```
-
-### 2. Component Organization Pattern (When Expanding)
-
-```
-src/components/
-├── ui/                # Reusable UI components (Button, Card, etc.)
-├── layout/            # Layout components (Header, Footer)
-├── sections/          # Page sections (Hero, Features, etc.)
-└── forms/             # Form components
-```
-
-### 3. Server Components by Default
-
-All components are Server Components unless marked with `"use client"`:
-```tsx
-// Server Component (default) - can fetch data, access DB
-export default function Page() {
-  return <div>Server rendered</div>;
-}
-
-// Client Component - for interactivity
-"use client";
-export default function Counter() {
-  const [count, setCount] = useState(0);
-  return <button onClick={() => setCount(c => c + 1)}>{count}</button>;
-}
-```
-
-### 4. Layout Pattern
-
-Layouts wrap pages and can be nested:
-```tsx
-// src/app/layout.tsx - Root layout
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="en">
-      <body>{children}</body>
-    </html>
-  );
-}
-
-// src/app/dashboard/layout.tsx - Nested layout
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex">
-      <Sidebar />
-      <main>{children}</main>
-    </div>
-  );
-}
+devices → system_metrics (1:N)
+devices → interface_metrics (1:N)
+devices → routing_metrics (1:N)
+devices → firewall_metrics (1:N)
 ```
 
 ## Styling Conventions
-
-### Tailwind CSS Usage
-- Utility classes directly on elements
-- Component composition for repeated patterns
-- Responsive: `sm:`, `md:`, `lg:`, `xl:`
-
-### Common Patterns
-```tsx
-// Container
-<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-
-// Responsive grid
-<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-
-// Flexbox centering
-<div className="flex items-center justify-center">
-```
-
-## File Naming Conventions
-
-- Components: PascalCase (`Button.tsx`, `Header.tsx`)
-- Utilities: camelCase (`utils.ts`, `helpers.ts`)
-- Pages/Routes: lowercase (`page.tsx`, `layout.tsx`)
-- Directories: kebab-case (`api-routes/`) or lowercase (`components/`)
-
-## State Management
-
-For simple needs:
-- `useState` for local component state
-- `useContext` for shared state
-- Server Components for data fetching
-
-For complex needs (add when necessary):
-- Zustand for client state
-- React Query for server state
+- Dark theme (gray-900 background, gray-800 cards)
+- Status colors: green (online), red (offline), yellow (unknown)
+- Chart colors: blue, green, red, yellow, purple for different metrics
