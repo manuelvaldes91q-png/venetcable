@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { TopNav } from "@/components/ui/TopNav";
 
 interface Device {
   id: number;
@@ -26,10 +27,7 @@ export default function DevicesPage() {
     password: "",
   });
   const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState<{
-    type: "success" | "error";
-    text: string;
-  } | null>(null);
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const fetchDevices = useCallback(async () => {
     try {
@@ -52,32 +50,26 @@ export default function DevicesPage() {
     e.preventDefault();
     setSubmitting(true);
     setMessage(null);
-
     try {
       const res = await fetch("/api/devices", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
-
       const data = await res.json();
-
       if (res.ok) {
         setMessage({
           type: "success",
-          text: `Device added successfully. Connection: ${data.connectionTest?.success ? "OK" : "Failed"}`,
+          text: `Dispositivo agregado correctamente. Conexión: ${data.connectionTest?.success ? "OK" : "Fallida"}`,
         });
         setFormData({ name: "", host: "", port: 8728, username: "", password: "" });
         setShowForm(false);
         await fetchDevices();
       } else {
-        setMessage({
-          type: "error",
-          text: data.error || "Failed to add device",
-        });
+        setMessage({ type: "error", text: data.error || "Error al agregar dispositivo" });
       }
     } catch {
-      setMessage({ type: "error", text: "Network error" });
+      setMessage({ type: "error", text: "Error de red" });
     } finally {
       setSubmitting(false);
     }
@@ -92,188 +84,141 @@ export default function DevicesPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-gray-400">Loading devices...</div>
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#0b0c0e" }}>
+        <div style={{ color: "#8e8e8e", fontSize: "14px" }}>Cargando dispositivos...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
-      <header className="bg-gray-800 border-b border-gray-700 px-6 py-4">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
+    <div className="min-h-screen" style={{ backgroundColor: "#0b0c0e" }}>
+      <TopNav />
+
+      <main style={{ maxWidth: 1000, margin: "0 auto", padding: "24px" }}>
+        <div className="flex items-center justify-between mb-6">
           <div>
-            <a href="/dashboard" className="text-sm text-blue-400 hover:text-blue-300">
-              &larr; Back to Dashboard
-            </a>
-            <h1 className="text-xl font-bold text-white mt-1">
-              Device Management
+            <h1 style={{ fontSize: "20px", fontWeight: 600, color: "#e0e0e0" }}>
+              Gestión de Dispositivos
             </h1>
+            <p style={{ fontSize: "12px", color: "#5a5f6a", marginTop: "2px" }}>
+              Administre sus dispositivos MikroTik conectados vía API
+            </p>
           </div>
           <button
             onClick={() => setShowForm(!showForm)}
-            className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors"
+            className="btn-primary"
           >
-            {showForm ? "Cancel" : "Add Device"}
+            {showForm ? "Cancelar" : "+ Agregar Dispositivo"}
           </button>
         </div>
-      </header>
 
-      <main className="max-w-5xl mx-auto px-6 py-6">
         {message && (
-          <div
-            className={`mb-4 p-3 rounded-lg text-sm ${
-              message.type === "success"
-                ? "bg-green-900/50 text-green-300 border border-green-700"
-                : "bg-red-900/50 text-red-300 border border-red-700"
-            }`}
-          >
+          <div className={message.type === "success" ? "toast-success" : "toast-error"} style={{ marginBottom: "16px" }}>
             {message.text}
           </div>
         )}
 
         {showForm && (
-          <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-6">
-            <h2 className="text-lg font-semibold mb-4">Add MikroTik Device</h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">
-                    Device Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.name}
-                    onChange={(e) =>
-                      setFormData((p) => ({ ...p, name: e.target.value }))
-                    }
-                    placeholder="e.g. Core Router"
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+          <div className="panel mb-6">
+            <div className="panel-header">
+              <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#e0e0e0" }}>
+                Agregar Dispositivo MikroTik
+              </h3>
+            </div>
+            <div className="panel-body">
+              <form onSubmit={handleSubmit}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <label className="label-text">Nombre del Dispositivo *</label>
+                    <input type="text" required value={formData.name} onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))} placeholder="Ej. Router Central" className="input-field" />
+                  </div>
+                  <div>
+                    <label className="label-text">Host / IP *</label>
+                    <input type="text" required value={formData.host} onChange={(e) => setFormData((p) => ({ ...p, host: e.target.value }))} placeholder="Ej. 192.168.1.1" className="input-field" />
+                  </div>
+                  <div>
+                    <label className="label-text">Puerto API</label>
+                    <input type="number" value={formData.port} onChange={(e) => setFormData((p) => ({ ...p, port: parseInt(e.target.value, 10) || 8728 }))} placeholder="8728" className="input-field" />
+                    <p style={{ fontSize: "10px", color: "#5a5f6a", marginTop: "4px" }}>
+                      Predeterminado: 8728 (plain) o 8729 (TLS). Configurable para NAT/seguridad personalizada.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="label-text">Usuario *</label>
+                    <input type="text" required value={formData.username} onChange={(e) => setFormData((p) => ({ ...p, username: e.target.value }))} placeholder="admin" className="input-field" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="label-text">Contraseña *</label>
+                    <input type="password" required value={formData.password} onChange={(e) => setFormData((p) => ({ ...p, password: e.target.value }))} placeholder="••••••••" className="input-field" />
+                    <p style={{ fontSize: "10px", color: "#5a5f6a", marginTop: "4px" }}>
+                      Almacenada cifrada con AES-256-GCM. Configure la variable de entorno MIKROTIK_ENCRYPTION_SECRET en producción.
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">
-                    Host / IP *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.host}
-                    onChange={(e) =>
-                      setFormData((p) => ({ ...p, host: e.target.value }))
-                    }
-                    placeholder="e.g. 192.168.1.1"
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">
-                    API Port
-                  </label>
-                  <input
-                    type="number"
-                    value={formData.port}
-                    onChange={(e) =>
-                      setFormData((p) => ({
-                        ...p,
-                        port: parseInt(e.target.value, 10) || 8728,
-                      }))
-                    }
-                    placeholder="8728"
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Default: 8728 (plain) or 8729 (TLS). Configurable for NAT/custom setups.
-                  </p>
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">
-                    Username *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.username}
-                    onChange={(e) =>
-                      setFormData((p) => ({ ...p, username: e.target.value }))
-                    }
-                    placeholder="admin"
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-sm text-gray-400 mb-1">
-                    Password *
-                  </label>
-                  <input
-                    type="password"
-                    required
-                    value={formData.password}
-                    onChange={(e) =>
-                      setFormData((p) => ({ ...p, password: e.target.value }))
-                    }
-                    placeholder="••••••••"
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Stored encrypted with AES-256-GCM. Set MIKROTIK_ENCRYPTION_SECRET env var in production.
-                  </p>
-                </div>
-              </div>
-              <button
-                type="submit"
-                disabled={submitting}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 text-white text-sm font-medium rounded-md transition-colors"
-              >
-                {submitting ? "Adding & Testing..." : "Add Device"}
-              </button>
-            </form>
+                <button type="submit" disabled={submitting} className="btn-primary">
+                  {submitting ? "Agregando y Probando..." : "Agregar Dispositivo"}
+                </button>
+              </form>
+            </div>
           </div>
         )}
 
         <div className="space-y-3">
           {devices.length === 0 ? (
-            <div className="bg-gray-800 rounded-lg p-12 border border-gray-700 text-center">
-              <p className="text-gray-400">No devices configured yet.</p>
-              <button
-                onClick={() => setShowForm(true)}
-                className="mt-3 text-sm text-blue-400 hover:text-blue-300"
-              >
-                Add your first device
+            <div className="panel" style={{ textAlign: "center", padding: "48px 24px" }}>
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#5a5f6a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ margin: "0 auto 12px" }}>
+                <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
+                <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
+                <line x1="6" y1="6" x2="6.01" y2="6"/>
+                <line x1="6" y1="18" x2="6.01" y2="18"/>
+              </svg>
+              <p style={{ color: "#8e8e8e", fontSize: "14px", marginBottom: "4px" }}>
+                No hay dispositivos configurados
+              </p>
+              <p style={{ color: "#5a5f6a", fontSize: "12px" }}>
+                Agregue su primer dispositivo MikroTik para comenzar.
+              </p>
+              <button onClick={() => setShowForm(true)} className="btn-primary" style={{ marginTop: "16px" }}>
+                Agregar Dispositivo
               </button>
             </div>
           ) : (
             devices.map((device) => (
-              <div
-                key={device.id}
-                className="bg-gray-800 rounded-lg p-4 border border-gray-700 flex items-center justify-between"
-              >
-                <div className="flex items-center gap-3">
-                  <span
-                    className={`w-3 h-3 rounded-full ${
-                      device.status === "online"
-                        ? "bg-green-500"
-                        : device.status === "offline"
-                          ? "bg-red-500"
-                          : "bg-yellow-500"
-                    }`}
-                  />
-                  <div>
-                    <p className="font-medium text-white">{device.name}</p>
-                    <p className="text-sm text-gray-400">
-                      {device.host}:{device.port} — {device.username}
-                      {device.routerosVersion &&
-                        ` — RouterOS ${device.routerosVersion}`}
-                    </p>
+              <div key={device.id} className="panel">
+                <div className="panel-body">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`status-dot ${
+                          device.status === "online"
+                            ? "status-dot-online"
+                            : device.status === "offline"
+                              ? "status-dot-offline"
+                              : "status-dot-unknown"
+                        }`}
+                      />
+                      <div>
+                        <p style={{ fontWeight: 600, color: "#e0e0e0", fontSize: "14px" }}>
+                          {device.name}
+                        </p>
+                        <p style={{ fontSize: "12px", color: "#8e8e8e", fontVariantNumeric: "tabular-nums" }}>
+                          {device.host}:{device.port} — {device.username}
+                          {device.routerosVersion && (
+                            <span style={{ marginLeft: 8, color: "#5a5f6a" }}>
+                              RouterOS {device.routerosVersion}
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleDelete(device.id)}
+                      className="btn-danger"
+                    >
+                      Eliminar
+                    </button>
                   </div>
                 </div>
-                <button
-                  onClick={() => handleDelete(device.id)}
-                  className="px-3 py-1.5 text-xs font-medium bg-red-600/20 hover:bg-red-600/40 text-red-400 rounded-md transition-colors"
-                >
-                  Remove
-                </button>
               </div>
             ))
           )}

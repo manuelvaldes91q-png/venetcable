@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "MikroTik Monitor — RouterOS v6 Dashboard",
+  title: "MikroTik Monitor — Panel de Monitoreo",
   description:
-    "Real-time monitoring dashboard for MikroTik RouterOS v6 devices. CPU, memory, traffic, BGP/OSPF, and firewall metrics.",
+    "Panel de monitoreo en tiempo real para dispositivos MikroTik RouterOS v6. CPU, memoria, tráfico, BGP/OSPF y firewall.",
 };
 
 export default function RootLayout({
@@ -24,9 +24,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="es">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-900 text-white`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        style={{ backgroundColor: "#0b0c0e", color: "#d8d9da" }}
       >
         {children}
       </body>

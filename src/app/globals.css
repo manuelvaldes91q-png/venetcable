@@ -1,35 +1,302 @@
 @import "tailwindcss";
 
 @theme {
-  --color-gray-900: #111827;
-  --color-gray-800: #1F2937;
-  --color-gray-700: #374151;
-  --color-gray-600: #4B5563;
-  --color-gray-500: #6B7280;
-  --color-gray-400: #9CA3AF;
-  --color-gray-300: #D1D5DB;
+  --color-grafana-bg: #0b0c0e;
+  --color-grafana-panel: #181b1f;
+  --color-grafana-panel-border: #2c3039;
+  --color-grafana-border: #343841;
+  --color-grafana-text: #d8d9da;
+  --color-grafana-text-muted: #8e8e8e;
+  --color-grafana-text-dim: #5a5f6a;
+  --color-grafana-heading: #e0e0e0;
+  --color-grafana-link: #6e9fff;
+  --color-grafana-blue: #3b82f6;
+  --color-grafana-green: #73bf69;
+  --color-grafana-red: #f2495c;
+  --color-grafana-yellow: #ff9830;
+  --color-grafana-purple: #b877d9;
+  --color-grafana-cyan: #1f78c4;
+  --color-grafana-orange: #e0752d;
 }
 
 body {
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
-  background-color: var(--color-gray-900);
-  color: white;
+  font-family: var(--font-geist-sans), "Inter", system-ui, -apple-system, sans-serif;
+  background-color: var(--color-grafana-bg);
+  color: var(--color-grafana-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #343841 transparent;
 }
 
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--color-gray-800);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-gray-600);
-  border-radius: 4px;
+  background: #343841;
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-gray-500);
+  background: #4a4f5a;
+}
+
+.panel {
+  background-color: var(--color-grafana-panel);
+  border: 1px solid var(--color-grafana-panel-border);
+  border-radius: 4px;
+}
+
+.panel-header {
+  border-bottom: 1px solid var(--color-grafana-panel-border);
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.panel-body {
+  padding: 16px;
+}
+
+.topbar {
+  background-color: #141619;
+  border-bottom: 1px solid #2c3039;
+  height: 48px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.topbar-brand {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e0e0e0;
+  letter-spacing: -0.01em;
+}
+
+.topbar-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.topbar-nav-item {
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #9ea0a6;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  text-decoration: none;
+}
+
+.topbar-nav-item:hover {
+  color: #d8d9da;
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.topbar-nav-item.active {
+  color: #6e9fff;
+  background-color: rgba(110, 159, 255, 0.1);
+}
+
+.topbar-time {
+  font-size: 12px;
+  color: #8e8e8e;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-gauge {
+  position: relative;
+  width: 56px;
+  height: 56px;
+}
+
+.metric-gauge svg {
+  transform: rotate(-90deg);
+}
+
+.metric-gauge-bg {
+  fill: none;
+  stroke: #2c3039;
+  stroke-width: 4;
+}
+
+.metric-gauge-fill {
+  fill: none;
+  stroke-width: 4;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.6s ease;
+}
+
+.metric-gauge-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.btn-primary {
+  background-color: #3b82f6;
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 14px;
+  border-radius: 4px;
+  transition: background-color 0.15s ease;
+  border: none;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  background-color: #2563eb;
+}
+
+.btn-primary:disabled {
+  background-color: #1e3a5f;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background-color: transparent;
+  color: #9ea0a6;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 14px;
+  border-radius: 4px;
+  border: 1px solid #343841;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.btn-secondary:hover {
+  color: #d8d9da;
+  border-color: #4a4f5a;
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+.btn-danger {
+  background-color: rgba(242, 73, 92, 0.12);
+  color: #f2495c;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 14px;
+  border-radius: 4px;
+  border: 1px solid rgba(242, 73, 92, 0.2);
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.btn-danger:hover {
+  background-color: rgba(242, 73, 92, 0.2);
+  border-color: rgba(242, 73, 92, 0.4);
+}
+
+.btn-success {
+  background-color: rgba(115, 191, 105, 0.12);
+  color: #73bf69;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 14px;
+  border-radius: 4px;
+  border: 1px solid rgba(115, 191, 105, 0.2);
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.btn-success:hover {
+  background-color: rgba(115, 191, 105, 0.2);
+  border-color: rgba(115, 191, 105, 0.4);
+}
+
+.input-field {
+  width: 100%;
+  padding: 7px 10px;
+  background-color: #0b0c0e;
+  border: 1px solid #343841;
+  border-radius: 4px;
+  color: #d8d9da;
+  font-size: 13px;
+  transition: border-color 0.15s ease;
+  outline: none;
+}
+
+.input-field:focus {
+  border-color: #3b82f6;
+}
+
+.input-field::placeholder {
+  color: #5a5f6a;
+}
+
+.select-field {
+  width: 100%;
+  padding: 7px 10px;
+  background-color: #0b0c0e;
+  border: 1px solid #343841;
+  border-radius: 4px;
+  color: #d8d9da;
+  font-size: 13px;
+  outline: none;
+}
+
+.label-text {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: #8e8e8e;
+  margin-bottom: 4px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-dot-online {
+  background-color: #73bf69;
+  box-shadow: 0 0 6px rgba(115, 191, 105, 0.4);
+}
+
+.status-dot-offline {
+  background-color: #f2495c;
+  box-shadow: 0 0 6px rgba(242, 73, 92, 0.4);
+}
+
+.status-dot-unknown {
+  background-color: #ff9830;
+  box-shadow: 0 0 6px rgba(255, 152, 48, 0.4);
+}
+
+.toast-success {
+  background-color: rgba(115, 191, 105, 0.1);
+  border: 1px solid rgba(115, 191, 105, 0.3);
+  color: #73bf69;
+  padding: 10px 16px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.toast-error {
+  background-color: rgba(242, 73, 92, 0.1);
+  border: 1px solid rgba(242, 73, 92, 0.3);
+  color: #f2495c;
+  padding: 10px 16px;
+  border-radius: 4px;
+  font-size: 13px;
 }

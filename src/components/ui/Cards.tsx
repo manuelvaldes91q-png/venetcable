@@ -1,6 +1,47 @@
 "use client";
 
-import { getStatusDotColor } from "@/lib/utils";
+function getGaugeColor(pct: number): string {
+  if (pct >= 80) return "#f2495c";
+  if (pct >= 50) return "#ff9830";
+  return "#73bf69";
+}
+
+function GaugeCircle({ value, max, label, unit }: { value: number; max?: number; label: string; unit?: string }) {
+  const pct = max ? (value / max) * 100 : Math.min(value, 100);
+  const radius = 22;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (pct / 100) * circumference;
+  const color = getGaugeColor(pct);
+
+  return (
+    <div className="flex flex-col items-center">
+      <div className="relative" style={{ width: 52, height: 52 }}>
+        <svg width="52" height="52" viewBox="0 0 52 52">
+          <circle
+            cx="26" cy="26" r={radius}
+            className="metric-gauge-bg"
+          />
+          <circle
+            cx="26" cy="26" r={radius}
+            className="metric-gauge-fill"
+            stroke={color}
+            strokeDasharray={circumference}
+            strokeDashoffset={offset}
+          />
+        </svg>
+        <span
+          className="metric-gauge-text"
+          style={{ color }}
+        >
+          {value}{unit || "%"}
+        </span>
+      </div>
+      <span className="text-[10px] mt-1" style={{ color: "#8e8e8e" }}>
+        {label}
+      </span>
+    </div>
+  );
+}
 
 interface StatCardProps {
   title: string;
@@ -11,18 +52,24 @@ interface StatCardProps {
 
 export function StatCard({ title, value, subtitle, icon }: StatCardProps) {
   return (
-    <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">
-            {title}
-          </p>
-          <p className="text-2xl font-bold text-white mt-1">{value}</p>
-          {subtitle && (
-            <p className="text-xs text-gray-500 mt-1">{subtitle}</p>
-          )}
+    <div className="panel">
+      <div className="panel-body">
+        <div className="flex items-center justify-between">
+          <div>
+            <p style={{ fontSize: "11px", fontWeight: 500, color: "#8e8e8e", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+              {title}
+            </p>
+            <p style={{ fontSize: "28px", fontWeight: 700, color: "#e0e0e0", marginTop: "4px", fontVariantNumeric: "tabular-nums" }}>
+              {value}
+            </p>
+            {subtitle && (
+              <p style={{ fontSize: "11px", color: "#5a5f6a", marginTop: "2px" }}>
+                {subtitle}
+              </p>
+            )}
+          </div>
+          {icon && <div style={{ color: "#5a5f6a" }}>{icon}</div>}
         </div>
-        {icon && <div className="text-gray-400">{icon}</div>}
       </div>
     </div>
   );
@@ -57,107 +104,104 @@ export function DeviceCard({
   onDelete,
   collecting,
 }: DeviceCardProps) {
-  const memoryUsed =
+  const memoryPct =
     totalMemory && freeMemory
-      ? (((totalMemory - freeMemory) / totalMemory) * 100).toFixed(1)
+      ? Math.round(((totalMemory - freeMemory) / totalMemory) * 100)
       : null;
 
+  const freeMemMB = freeMemory ? Math.round(freeMemory / 1024 / 1024) : null;
+  const totalMemMB = totalMemory ? Math.round(totalMemory / 1024 / 1024) : null;
+
   return (
-    <div className="bg-gray-800 rounded-lg p-5 border border-gray-700 hover:border-gray-600 transition-colors">
-      <div className="flex items-start justify-between mb-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <span
-              className={`w-2.5 h-2.5 rounded-full ${getStatusDotColor(status)}`}
-            />
-            <h3 className="text-lg font-semibold text-white">{name}</h3>
-          </div>
-          <p className="text-sm text-gray-400 mt-1">
-            {host}:{port}
-          </p>
-          {routerosVersion && (
-            <p className="text-xs text-gray-500 mt-0.5">
-              RouterOS {routerosVersion}
+    <div className="panel" style={{ transition: "border-color 0.15s ease" }}>
+      <div className="panel-header">
+        <div className="flex items-center gap-2.5">
+          <span
+            className={`status-dot ${
+              status === "online"
+                ? "status-dot-online"
+                : status === "offline"
+                  ? "status-dot-offline"
+                  : "status-dot-unknown"
+            }`}
+          />
+          <div>
+            <h3 style={{ fontSize: "14px", fontWeight: 600, color: "#e0e0e0" }}>
+              {name}
+            </h3>
+            <p style={{ fontSize: "11px", color: "#8e8e8e", fontVariantNumeric: "tabular-nums" }}>
+              {host}:{port}
+              {routerosVersion && (
+                <span style={{ marginLeft: 8, color: "#5a5f6a" }}>
+                  v{routerosVersion}
+                </span>
+              )}
             </p>
-          )}
+          </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           {onCollectMetrics && (
             <button
               onClick={onCollectMetrics}
               disabled={collecting}
-              className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 text-white rounded-md transition-colors"
+              className="btn-primary"
+              style={{ padding: "4px 10px", fontSize: "11px" }}
             >
-              {collecting ? "Collecting..." : "Collect"}
+              {collecting ? "Recolectando..." : "Recolectar"}
             </button>
           )}
           {onDelete && (
             <button
               onClick={onDelete}
-              className="px-3 py-1.5 text-xs font-medium bg-red-600/20 hover:bg-red-600/40 text-red-400 rounded-md transition-colors"
+              className="btn-danger"
+              style={{ padding: "4px 10px", fontSize: "11px" }}
             >
-              Remove
+              Eliminar
             </button>
           )}
         </div>
       </div>
-
-      {cpuLoad !== undefined && (
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <p className="text-xs text-gray-500">CPU</p>
-            <div className="flex items-center gap-2 mt-1">
-              <div className="flex-1 bg-gray-700 rounded-full h-2">
-                <div
-                  className={`h-2 rounded-full ${
-                    cpuLoad > 80
-                      ? "bg-red-500"
-                      : cpuLoad > 50
-                        ? "bg-yellow-500"
-                        : "bg-green-500"
-                  }`}
-                  style={{ width: `${Math.min(cpuLoad, 100)}%` }}
-                />
+      <div className="panel-body">
+        {cpuLoad !== undefined ? (
+          <div className="flex items-center justify-around">
+            <GaugeCircle value={cpuLoad} label="CPU" />
+            {memoryPct !== null && (
+              <GaugeCircle value={memoryPct} label="RAM" />
+            )}
+            {uptime && (
+              <div className="flex flex-col items-center">
+                <span style={{ fontSize: "18px", fontWeight: 700, color: "#6e9fff" }}>
+                  {uptime.split("d")[0]}
+                </span>
+                <span className="text-[10px]" style={{ color: "#8e8e8e" }}>
+                  Uptime
+                </span>
+                <span className="text-[9px]" style={{ color: "#5a5f6a" }}>
+                  {uptime.length > 8 ? uptime.substring(0, 16) : uptime}
+                </span>
               </div>
-              <span className="text-xs text-gray-300 w-8 text-right">
-                {cpuLoad}%
+            )}
+          </div>
+        ) : (
+          <div style={{ textAlign: "center", padding: "12px 0" }}>
+            <p style={{ fontSize: "12px", color: "#5a5f6a" }}>
+              Sin datos — presione &quot;Recolectar&quot; para obtener métricas
+            </p>
+          </div>
+        )}
+        {freeMemMB !== null && totalMemMB !== null && (
+          <div className="mt-3 pt-3" style={{ borderTop: "1px solid #2c3039" }}>
+            <div className="flex justify-between text-[11px]">
+              <span style={{ color: "#5a5f6a" }}>
+                Memoria libre: <span style={{ color: "#8e8e8e" }}>{freeMemMB} MB</span>
+              </span>
+              <span style={{ color: "#5a5f6a" }}>
+                Total: <span style={{ color: "#8e8e8e" }}>{totalMemMB} MB</span>
               </span>
             </div>
           </div>
-
-          {memoryUsed && (
-            <div>
-              <p className="text-xs text-gray-500">Memory</p>
-              <div className="flex items-center gap-2 mt-1">
-                <div className="flex-1 bg-gray-700 rounded-full h-2">
-                  <div
-                    className={`h-2 rounded-full ${
-                      parseFloat(memoryUsed) > 80
-                        ? "bg-red-500"
-                        : parseFloat(memoryUsed) > 50
-                          ? "bg-yellow-500"
-                          : "bg-green-500"
-                    }`}
-                    style={{ width: `${Math.min(parseFloat(memoryUsed), 100)}%` }}
-                  />
-                </div>
-                <span className="text-xs text-gray-300 w-8 text-right">
-                  {memoryUsed}%
-                </span>
-              </div>
-            </div>
-          )}
-
-          {uptime && (
-            <div>
-              <p className="text-xs text-gray-500">Uptime</p>
-              <p className="text-xs text-gray-300 mt-1 truncate" title={uptime}>
-                {uptime}
-              </p>
-            </div>
-          )}
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
