@@ -238,12 +238,20 @@ export default function DashboardPage() {
               RouterOS v6 Monitoring Dashboard
             </p>
           </div>
-          <a
-            href="/dashboard/devices"
-            className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors"
-          >
-            Manage Devices
-          </a>
+          <div className="flex items-center gap-2">
+            <a
+              href="/dashboard/antennas"
+              className="px-4 py-2 text-sm font-medium bg-gray-700 hover:bg-gray-600 text-white rounded-md transition-colors"
+            >
+              Antennas
+            </a>
+            <a
+              href="/dashboard/devices"
+              className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors"
+            >
+              Manage Devices
+            </a>
+          </div>
         </div>
       </header>
 

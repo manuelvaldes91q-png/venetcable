@@ -67,6 +67,51 @@ export const routingMetrics = sqliteTable("routing_metrics", {
   ),
 });
 
+export const antennas = sqliteTable("antennas", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  ssid: text("ssid"),
+  frequency: text("frequency"),
+  channelWidth: text("channel_width"),
+  mode: text("mode", {
+    enum: ["ap-bridge", "station", "bridge", "wds-slave", "other"],
+  }).default("other"),
+  deviceId: integer("device_id").references(() => devices.id, {
+    onDelete: "set null",
+  }),
+  interfaceName: text("interface_name"),
+  location: text("location"),
+  notes: text("notes"),
+  status: text("status", { enum: ["up", "down", "unknown"] })
+    .notNull()
+    .default("unknown"),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
+    () => new Date()
+  ),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(
+    () => new Date()
+  ),
+});
+
+export const antennaReadings = sqliteTable("antenna_readings", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  antennaId: integer("antenna_id")
+    .notNull()
+    .references(() => antennas.id, { onDelete: "cascade" }),
+  signalStrength: real("signal_strength"),
+  signalNoise: real("signal_noise"),
+  ccq: real("ccq"),
+  txRate: text("tx_rate"),
+  rxRate: text("rx_rate"),
+  txBytes: integer("tx_bytes").default(0),
+  rxBytes: integer("rx_bytes").default(0),
+  registeredClients: integer("registered_clients").default(0),
+  notes: text("notes"),
+  timestamp: integer("timestamp", { mode: "timestamp" }).$defaultFn(
+    () => new Date()
+  ),
+});
+
 export const firewallMetrics = sqliteTable("firewall_metrics", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   deviceId: integer("device_id")

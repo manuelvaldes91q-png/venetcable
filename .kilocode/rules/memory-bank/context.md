@@ -22,6 +22,14 @@
   - [x] Grafana-style dashboard with Recharts (CPU, Memory, Traffic, Firewall charts)
   - [x] Device management page with add/remove
   - [x] Auto-refresh polling (30s dashboard, 15s metrics)
+- [x] **Antenna Monitoring Module**:
+  - [x] Database tables: `antennas` (name, ssid, frequency, channel width, mode, location) + `antennaReadings` (signal, noise, CCQ, rates, clients)
+  - [x] API CRUD for antennas (`/api/antennas` — GET/POST/PATCH/DELETE)
+  - [x] API for readings (`/api/antennas/readings` — GET/POST)
+  - [x] Antenna dashboard page (`/dashboard/antennas`) with manual entry forms
+  - [x] Signal quality indicators (Excellent/Good/Fair/Poor/Bad)
+  - [x] Historical charts: Signal & Noise, SNR, CCQ over time
+  - [x] Reading history table with full detail
 
 ## Current Structure
 
@@ -43,6 +51,9 @@
 | `src/lib/utils.ts` | Formatting utilities | ✅ Ready |
 | `src/components/ui/Charts.tsx` | Chart components (Line, Area, Bar) | ✅ Ready |
 | `src/components/ui/Cards.tsx` | StatCard, DeviceCard components | ✅ Ready |
+| `src/app/dashboard/antennas/page.tsx` | Antenna monitoring page | ✅ Ready |
+| `src/app/api/antennas/route.ts` | Antenna CRUD API | ✅ Ready |
+| `src/app/api/antennas/readings/route.ts` | Antenna readings API | ✅ Ready |
 | `drizzle.config.ts` | Drizzle ORM config | ✅ Ready |
 
 ## Tech Stack Additions
