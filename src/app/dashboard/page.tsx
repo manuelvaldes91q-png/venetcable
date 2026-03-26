@@ -129,6 +129,30 @@ export default function DashboardPage() {
   const [wanInput, setWanInput] = useState("");
   const [savingWan, setSavingWan] = useState(false);
 
+  const collectAndRefresh = useCallback(async (deviceId: number) => {
+    setCollecting((p) => ({ ...p, [deviceId]: true }));
+    try {
+      await fetch("/api/metrics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deviceId }),
+      });
+    } catch {
+    } finally {
+      setCollecting((p) => ({ ...p, [deviceId]: false }));
+    }
+    const res = await fetch("/api/dashboard");
+    if (res.ok) {
+      const data = await res.json();
+      setDashboardData(data);
+    }
+    const hRes = await fetch(`/api/metrics?deviceId=${deviceId}&hours=24`);
+    if (hRes.ok) {
+      const hData = await hRes.json();
+      setMetricHistory(hData);
+    }
+  }, []);
+
   const fetchDashboard = useCallback(async () => {
     try {
       const res = await fetch("/api/dashboard");
@@ -145,29 +169,16 @@ export default function DashboardPage() {
     }
   }, [selectedDevice]);
 
-  const fetchMetricHistory = useCallback(async (deviceId: number) => {
-    try {
-      const res = await fetch(`/api/metrics?deviceId=${deviceId}&hours=24`);
-      if (res.ok) {
-        const data = await res.json();
-        setMetricHistory(data);
-      }
-    } catch {}
-  }, []);
-
   useEffect(() => {
     fetchDashboard();
-    const interval = setInterval(fetchDashboard, 60000);
-    return () => clearInterval(interval);
   }, [fetchDashboard]);
 
   useEffect(() => {
-    if (selectedDevice) {
-      fetchMetricHistory(selectedDevice);
-      const interval = setInterval(() => fetchMetricHistory(selectedDevice), 60000);
-      return () => clearInterval(interval);
-    }
-  }, [selectedDevice, fetchMetricHistory]);
+    if (!selectedDevice) return;
+    collectAndRefresh(selectedDevice);
+    const interval = setInterval(() => collectAndRefresh(selectedDevice), 60000);
+    return () => clearInterval(interval);
+  }, [selectedDevice, collectAndRefresh]);
 
   useEffect(() => {
     const dev = dashboardData?.devices.find((d) => d.id === selectedDevice);
@@ -175,19 +186,7 @@ export default function DashboardPage() {
   }, [selectedDevice, dashboardData]);
 
   const collectMetrics = async (deviceId: number) => {
-    setCollecting((p) => ({ ...p, [deviceId]: true }));
-    try {
-      await fetch("/api/metrics", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deviceId }),
-      });
-      await fetchDashboard();
-      if (selectedDevice === deviceId) await fetchMetricHistory(deviceId);
-    } catch {
-    } finally {
-      setCollecting((p) => ({ ...p, [deviceId]: false }));
-    }
+    await collectAndRefresh(deviceId);
   };
 
   const saveWanInterface = async () => {
