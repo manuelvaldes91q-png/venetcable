@@ -1,0 +1,1 @@
+ALTER TABLE `antennas` ADD `ip` text;

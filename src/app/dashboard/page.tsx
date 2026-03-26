@@ -272,15 +272,22 @@ export default function DashboardPage() {
     "Jitter (ms)": l.jitter,
   })) || [];
 
-  const trafficByInterface: Record<string, { timestamp: string; Rx: number; Tx: number }[]> = {};
-  metricHistory?.interfaces?.slice().reverse().forEach((iface) => {
-    if (!trafficByInterface[iface.interfaceName]) trafficByInterface[iface.interfaceName] = [];
-    trafficByInterface[iface.interfaceName].push({
-      timestamp: formatTime(iface.timestamp),
-      Rx: parseFloat((iface.rxBytes / 1024 / 1024).toFixed(2)),
-      Tx: parseFloat((iface.txBytes / 1024 / 1024).toFixed(2)),
-    });
-  });
+  const trafficByInterface: Record<string, { timestamp: string; "Rx (Mbps)": number; "Tx (Mbps)": number }[]> = {};
+  if (metricHistory?.interfaces) {
+    const sorted = metricHistory.interfaces.slice().reverse();
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i].interfaceName !== sorted[i - 1].interfaceName) continue;
+      const dt = Math.max(1, (new Date(sorted[i].timestamp).getTime() - new Date(sorted[i - 1].timestamp).getTime()) / 1000);
+      const rxBps = Math.max(0, (sorted[i].rxBytes - sorted[i - 1].rxBytes) * 8 / dt);
+      const txBps = Math.max(0, (sorted[i].txBytes - sorted[i - 1].txBytes) * 8 / dt);
+      if (!trafficByInterface[sorted[i].interfaceName]) trafficByInterface[sorted[i].interfaceName] = [];
+      trafficByInterface[sorted[i].interfaceName].push({
+        timestamp: formatTime(sorted[i].timestamp),
+        "Rx (Mbps)": parseFloat((rxBps / 1_000_000).toFixed(2)),
+        "Tx (Mbps)": parseFloat((txBps / 1_000_000).toFixed(2)),
+      });
+    }
+  }
 
   const firewallChartData = metricHistory?.firewall?.slice().reverse().map((f) => ({
     timestamp: formatTime(f.timestamp), Filtro: f.filterRules, NAT: f.natRules, Mangle: f.mangleRules, Fasttrack: f.fasttrackRules,
@@ -551,8 +558,8 @@ export default function DashboardPage() {
                       <MetricAreaChart
                         data={data}
                         dataKeys={[
-                          { key: "Rx", color: "#b877d9", name: "Rx (MB)" },
-                          { key: "Tx", color: "#ff9830", name: "Tx (MB)" },
+                          { key: "Rx (Mbps)", color: "#b877d9", name: "Bajada" },
+                          { key: "Tx (Mbps)", color: "#ff9830", name: "Subida" },
                         ]}
                         title={`Tráfico — ${ifaceName}`}
                       />
@@ -608,33 +615,51 @@ export default function DashboardPage() {
                       <table style={{ width: "100%", fontSize: "12px" }}>
                         <thead>
                           <tr style={{ borderBottom: "1px solid #2c3039" }}>
-                            {["Nombre", "Estado", "Rx", "Tx"].map((h) => (
+                            {["Nombre", "Estado", "Bajada (Rx)", "Subida (Tx)"].map((h) => (
                               <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: "#5a5f6a", fontWeight: 600, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.04em" }}>{h}</th>
                             ))}
                           </tr>
                         </thead>
                         <tbody>
-                          {sel.interfaces.map((iface, i) => (
-                            <tr key={i} style={{ borderBottom: "1px solid #1e2028" }}
-                              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.02)")}
-                              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-                            >
-                              <td style={{ padding: "8px 16px", color: "#d8d9da", fontWeight: 500 }}>
-                                {iface.interfaceName}
-                                {iface.interfaceName === wanName && (
-                                  <span style={{ marginLeft: 6, fontSize: "9px", color: "#ff9830", fontWeight: 700, backgroundColor: "rgba(255,152,48,0.1)", padding: "1px 4px", borderRadius: 2 }}>WAN</span>
-                                )}
-                              </td>
-                              <td style={{ padding: "8px 16px" }}>
-                                <span className="inline-flex items-center gap-1.5" style={{ color: iface.status === "running" ? "#73bf69" : "#5a5f6a", fontSize: "11px" }}>
-                                  <span className={`status-dot ${iface.status === "running" ? "status-dot-online" : "status-dot-offline"}`} style={{ width: 6, height: 6 }} />
-                                  {iface.status === "running" ? "Activo" : "Detenido"}
-                                </span>
-                              </td>
-                              <td style={{ padding: "8px 16px", color: "#8e8e8e", fontVariantNumeric: "tabular-nums" }}>{formatBytes(iface.rxBytes)}</td>
-                              <td style={{ padding: "8px 16px", color: "#8e8e8e", fontVariantNumeric: "tabular-nums" }}>{formatBytes(iface.txBytes)}</td>
-                            </tr>
-                          ))}
+                            {sel.interfaces.map((iface, i) => {
+                              const prev = sel.prevInterfaces?.find(
+                                (p) => p.interfaceName === iface.interfaceName && p.timestamp !== iface.timestamp
+                              );
+                              let rxRate = "—";
+                              let txRate = "—";
+                              if (prev) {
+                                const dt = Math.max(1, (new Date(iface.timestamp).getTime() - new Date(prev.timestamp).getTime()) / 1000);
+                                const rxBytesSec = Math.max(0, (iface.rxBytes - prev.rxBytes) / dt);
+                                const txBytesSec = Math.max(0, (iface.txBytes - prev.txBytes) / dt);
+                                rxRate = rxBytesSec > 1_000_000 ? `${(rxBytesSec / 1_000_000).toFixed(1)} MB/s`
+                                  : rxBytesSec > 1_000 ? `${(rxBytesSec / 1_000).toFixed(0)} KB/s`
+                                  : `${rxBytesSec.toFixed(0)} B/s`;
+                                txRate = txBytesSec > 1_000_000 ? `${(txBytesSec / 1_000_000).toFixed(1)} MB/s`
+                                  : txBytesSec > 1_000 ? `${(txBytesSec / 1_000).toFixed(0)} KB/s`
+                                  : `${txBytesSec.toFixed(0)} B/s`;
+                              }
+                              return (
+                                <tr key={i} style={{ borderBottom: "1px solid #1e2028" }}
+                                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.02)")}
+                                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                                >
+                                  <td style={{ padding: "8px 16px", color: "#d8d9da", fontWeight: 500 }}>
+                                    {iface.interfaceName}
+                                    {iface.interfaceName === wanName && (
+                                      <span style={{ marginLeft: 6, fontSize: "9px", color: "#ff9830", fontWeight: 700, backgroundColor: "rgba(255,152,48,0.1)", padding: "1px 4px", borderRadius: 2 }}>WAN</span>
+                                    )}
+                                  </td>
+                                  <td style={{ padding: "8px 16px" }}>
+                                    <span className="inline-flex items-center gap-1.5" style={{ color: iface.status === "running" ? "#73bf69" : "#5a5f6a", fontSize: "11px" }}>
+                                      <span className={`status-dot ${iface.status === "running" ? "status-dot-online" : "status-dot-offline"}`} style={{ width: 6, height: 6 }} />
+                                      {iface.status === "running" ? "Activo" : "Detenido"}
+                                    </span>
+                                  </td>
+                                  <td style={{ padding: "8px 16px", color: "#b877d9", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{rxRate}</td>
+                                  <td style={{ padding: "8px 16px", color: "#ff9830", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{txRate}</td>
+                                </tr>
+                              );
+                            })}
                         </tbody>
                       </table>
                     </div>

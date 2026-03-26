@@ -71,6 +71,7 @@ export const routingMetrics = sqliteTable("routing_metrics", {
 export const antennas = sqliteTable("antennas", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
+  ip: text("ip"),
   ssid: text("ssid"),
   frequency: text("frequency"),
   channelWidth: text("channel_width"),

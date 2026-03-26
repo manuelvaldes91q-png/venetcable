@@ -231,6 +231,131 @@ export async function testConnection(
   }
 }
 
+export interface DhcpLease {
+  id: string;
+  address: string;
+  macAddress: string;
+  hostName: string;
+  status: string;
+  server: string;
+  expiresAfter: string;
+}
+
+export interface SimpleQueue {
+  id: string;
+  name: string;
+  target: string;
+  maxLimit: string;
+  disabled: string;
+}
+
+export async function fetchDhcpLeases(
+  device: MikroTikDevice
+): Promise<DhcpLease[]> {
+  const conn = await connectToDevice(device);
+  try {
+    const response = await conn.write("/ip/dhcp-server/lease/print");
+    return response.map((lease: Record<string, string>) => ({
+      id: lease[".id"] || "",
+      address: lease["address"] || "",
+      macAddress: lease["mac-address"] || "",
+      hostName: lease["host-name"] || "",
+      status: lease["status"] || "",
+      server: lease["server"] || "",
+      expiresAfter: lease["expires-after"] || "",
+    }));
+  } finally {
+    await conn.close();
+  }
+}
+
+export async function convertDhcpToStatic(
+  device: MikroTikDevice,
+  leaseId: string,
+  name: string
+): Promise<boolean> {
+  const conn = await connectToDevice(device);
+  try {
+    await conn.write([
+      "/ip/dhcp-server/lease/set",
+      `=.id=${leaseId}`,
+      "=disabled=no",
+      `=comment=${name}`,
+      "=server=all",
+    ]);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await conn.close();
+  }
+}
+
+export async function addArpBinding(
+  device: MikroTikDevice,
+  macAddress: string,
+  ipAddress: string,
+  interfaceName: string
+): Promise<boolean> {
+  const conn = await connectToDevice(device);
+  try {
+    await conn.write([
+      "/ip/arp/add",
+      `=mac-address=${macAddress}`,
+      `=address=${ipAddress}`,
+      `=interface=${interfaceName}`,
+    ]);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await conn.close();
+  }
+}
+
+export async function addSimpleQueue(
+  device: MikroTikDevice,
+  name: string,
+  target: string,
+  maxLimitUpload: string,
+  maxLimitDownload: string
+): Promise<boolean> {
+  const conn = await connectToDevice(device);
+  try {
+    await conn.write([
+      "/queue/simple/add",
+      `=name=${name}`,
+      `=target=${target}`,
+      `=max-limit=${maxLimitUpload}/${maxLimitDownload}`,
+    ]);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await conn.close();
+  }
+}
+
+export async function fetchSimpleQueues(
+  device: MikroTikDevice
+): Promise<SimpleQueue[]> {
+  const conn = await connectToDevice(device);
+  try {
+    const response = await conn.write("/queue/simple/print");
+    return response.map((q: Record<string, string>) => ({
+      id: q[".id"] || "",
+      name: q["name"] || "",
+      target: q["target"] || "",
+      maxLimit: q["max-limit"] || "",
+      disabled: q["disabled"] || "false",
+    }));
+  } catch {
+    return [];
+  } finally {
+    await conn.close();
+  }
+}
+
 export async function collectAllMetrics(device: MikroTikDevice) {
   const [system, interfaces, routing, firewall] = await Promise.allSettled([
     fetchSystemResources(device),

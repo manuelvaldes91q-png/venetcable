@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { antennas, antennaReadings } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
+import { pingHost } from "@/lib/ping";
 
 export async function GET() {
   try {
@@ -21,10 +22,20 @@ export async function GET() {
 
         const latestReading = readings[0] || null;
 
+        let reachable: boolean | null = null;
+        let pingRtt: number | null = null;
+        if (ant.ip) {
+          const pingResult = await pingHost(ant.ip, 3);
+          reachable = pingResult.success;
+          pingRtt = pingResult.success ? pingResult.rttAvg : null;
+        }
+
         return {
           ...ant,
           latestReading,
           readings,
+          reachable,
+          pingRtt,
         };
       })
     );
@@ -43,6 +54,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const {
       name,
+      ip,
       ssid,
       frequency,
       channelWidth,
@@ -64,6 +76,7 @@ export async function POST(request: NextRequest) {
       .insert(antennas)
       .values({
         name,
+        ip: ip || null,
         ssid: ssid || null,
         frequency: frequency || null,
         channelWidth: channelWidth || null,
@@ -121,6 +134,7 @@ export async function PATCH(request: NextRequest) {
     const setData: Record<string, unknown> = { updatedAt: new Date() };
     if (status) setData.status = status;
     if (updates.name !== undefined) setData.name = updates.name;
+    if (updates.ip !== undefined) setData.ip = updates.ip;
     if (updates.ssid !== undefined) setData.ssid = updates.ssid;
     if (updates.frequency !== undefined) setData.frequency = updates.frequency;
     if (updates.channelWidth !== undefined)

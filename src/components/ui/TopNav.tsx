@@ -8,6 +8,7 @@ export function TopNav() {
   const links = [
     { href: "/dashboard", label: "Panel Principal" },
     { href: "/dashboard/antennas", label: "Antenas" },
+    { href: "/dashboard/provisioning", label: "Aprovisionamiento" },
     { href: "/dashboard/devices", label: "Dispositivos" },
   ];
 

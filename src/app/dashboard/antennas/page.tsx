@@ -22,6 +22,7 @@ interface Reading {
 interface Antenna {
   id: number;
   name: string;
+  ip: string | null;
   ssid: string | null;
   frequency: string | null;
   channelWidth: string | null;
@@ -35,6 +36,8 @@ interface Antenna {
   updatedAt: string;
   latestReading: Reading | null;
   readings: Reading[];
+  reachable: boolean | null;
+  pingRtt: number | null;
 }
 
 const SIGNAL_LABELS: Record<string, string> = {
@@ -73,7 +76,7 @@ export default function AntennasPage() {
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const [addForm, setAddForm] = useState({
-    name: "", ssid: "", frequency: "", channelWidth: "", mode: "other", location: "", notes: "",
+    name: "", ip: "", ssid: "", frequency: "", channelWidth: "", mode: "other", location: "", notes: "",
   });
 
   const [readingForm, setReadingForm] = useState({
@@ -113,7 +116,7 @@ export default function AntennasPage() {
       });
       if (res.ok) {
         setMessage({ type: "success", text: "Antena agregada correctamente" });
-        setAddForm({ name: "", ssid: "", frequency: "", channelWidth: "", mode: "other", location: "", notes: "" });
+        setAddForm({ name: "", ip: "", ssid: "", frequency: "", channelWidth: "", mode: "other", location: "", notes: "" });
         setShowAddForm(false);
         await fetchAntennas();
       } else {
@@ -254,6 +257,11 @@ export default function AntennasPage() {
                   <div>
                     <label className="label-text">Nombre *</label>
                     <input type="text" required value={addForm.name} onChange={(e) => setAddForm((p) => ({ ...p, name: e.target.value }))} placeholder="Ej. Sector Norte" className="input-field" />
+                  </div>
+                  <div>
+                    <label className="label-text">IP de la Antena</label>
+                    <input type="text" value={addForm.ip} onChange={(e) => setAddForm((p) => ({ ...p, ip: e.target.value }))} placeholder="Ej. 192.168.1.10" className="input-field" />
+                    <p style={{ fontSize: "10px", color: "#5a5f6a", marginTop: "2px" }}>Se hará ping para verificar estado (arriba/abajo)</p>
                   </div>
                   <div>
                     <label className="label-text">SSID</label>
@@ -397,7 +405,9 @@ export default function AntennasPage() {
                       <div className="flex items-center gap-2">
                         <span
                           className={`status-dot ${
-                            ant.status === "up" ? "status-dot-online" : ant.status === "down" ? "status-dot-offline" : "status-dot-unknown"
+                            ant.ip
+                              ? (ant.reachable ? "status-dot-online" : "status-dot-offline")
+                              : (ant.status === "up" ? "status-dot-online" : ant.status === "down" ? "status-dot-offline" : "status-dot-unknown")
                           }`}
                         />
                         <div>
@@ -405,6 +415,11 @@ export default function AntennasPage() {
                             {ant.name}
                           </h3>
                           <div className="flex gap-2 mt-0.5">
+                            {ant.ip && (
+                              <span style={{ fontSize: "10px", color: ant.reachable ? "#73bf69" : "#f2495c", fontWeight: 600 }}>
+                                {ant.ip}{ant.reachable && ant.pingRtt ? ` — ${ant.pingRtt}ms` : ant.reachable === false ? " — Sin respuesta" : ""}
+                              </span>
+                            )}
                             {ant.ssid && <span style={{ fontSize: "10px", color: "#5a5f6a" }}>{ant.ssid}</span>}
                             {ant.frequency && <span style={{ fontSize: "10px", color: "#8e8e8e" }}>{ant.frequency}</span>}
                           </div>

@@ -2,7 +2,7 @@
 
 ## Current State
 
-**Status**: Panel de monitoreo profesional estilo Grafana en español, con tráfico WAN en tiempo real, latencia/pérdida de paquetes, monitoreo de antenas, y gestión de dispositivos.
+**Status**: Panel de monitoreo profesional estilo Grafana en español, con tráfico WAN en tiempo real, latencia, monitoreo de antenas con ping, sistema de aprovisionamiento DHCP→Static→ARP→Velocidad.
 
 ## Recently Completed
 
@@ -53,6 +53,25 @@
   - [x] Gráfico de tráfico WAN (Mbps descarga/subida)
   - [x] Gráficos de latencia RTT (min/avg/max), pérdida de paquetes, jitter
   - [x] Indicadores de calidad de latencia (Excelente/Buena/Regular/Alta)
+- [x] **Tasa de Tráfico en Tiempo Real**:
+  - [x] Tabla de interfaces muestra velocidad (KB/s, MB/s) en vez de bytes acumulados
+  - [x] Gráficos de interfaces calculan Mbps entre lecturas consecutivas
+  - [x] Columnas renombradas: "Bajada (Rx)" y "Subida (Tx)"
+- [x] **Antenas con Ping IP**:
+  - [x] Campo `ip` en tabla antennas
+  - [x] Ping automático al cargar antenas (3 paquetes)
+  - [x] Punto verde + RTT si responde, punto rojo + "Sin respuesta" si no
+  - [x] Formulario de agregar antena incluye campo IP
+- [x] **Sistema de Aprovisionamiento**:
+  - [x] Funciones MikroTik: fetchDhcpLeases, convertDhcpToStatic, addArpBinding, addSimpleQueue
+  - [x] API `/api/provisioning` con acciones: list_leases, make_static, add_arp, add_queue, list_queues
+  - [x] Página `/dashboard/provisioning` con flujo paso a paso
+  - [x] Paso 1: Ver leases DHCP activos con botón "Aprovisionar"
+  - [x] Paso 2: Fijar IP estática con nombre del cliente
+  - [x] Paso 3: Vinculación ARP (amarrar IP-MAC)
+  - [x] Paso 4: Asignar velocidad (simple queue: upload/download)
+  - [x] Tabla de colas existentes
+  - [x] Link "Aprovisionamiento" en TopNav
 
 ## Current Structure
 
@@ -97,3 +116,4 @@
 | 2026-03-25 | Antenna monitoring module with manual entry |
 | 2026-03-25 | Rediseño profesional estilo Grafana, UI en español |
 | 2026-03-25 | WAN traffic monitoring, latency/packet loss with ping |
+| 2026-03-25 | Real-time bandwidth rates, antenna ping IP, provisioning system |
