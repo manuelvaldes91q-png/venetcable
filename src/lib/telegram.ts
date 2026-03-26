@@ -5,8 +5,9 @@ import {
 } from "@/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import {
-  type MikroTikDevice, pingFromDevice,
-  fetchDhcpLeases, fetchSimpleQueues,
+  type MikroTikDevice, type DhcpLease, pingFromDevice,
+  fetchDhcpLeases, fetchSimpleQueues, fetchInterfaceNames,
+  convertDhcpToStatic, addArpBinding, addSimpleQueue,
 } from "@/lib/mikrotik";
 
 interface TelegramUpdate {
@@ -18,6 +19,17 @@ interface TelegramUpdate {
     text?: string;
   };
 }
+
+interface ProvisionSession {
+  step: "select_lease" | "enter_name" | "enter_interface" | "enter_speed";
+  device: MikroTikDevice;
+  leases: DhcpLease[];
+  selectedLease: DhcpLease;
+  clientName: string;
+  arpInterface: string;
+}
+
+const conversationState = new Map<string, { type: "provision"; session: ProvisionSession }>();
 
 async function sendTelegramMessage(botToken: string, chatId: string | number, text: string) {
   try {
@@ -31,11 +43,8 @@ async function sendTelegramMessage(botToken: string, chatId: string | number, te
 
 function toMikroTikDevice(device: typeof devices.$inferSelect): MikroTikDevice {
   return {
-    id: device.id,
-    name: device.name,
-    host: device.host,
-    port: device.port,
-    username: device.username,
+    id: device.id, name: device.name, host: device.host,
+    port: device.port, username: device.username,
     encryptedPassword: device.encryptedPassword,
   };
 }
@@ -47,26 +56,144 @@ async function getFirstOnlineDevice(): Promise<MikroTikDevice | null> {
 }
 
 async function broadcastToActiveUsers(botToken: string, text: string) {
-  const activeUsers = await db
-    .select()
-    .from(telegramUsers)
-    .where(eq(telegramUsers.isActive, true));
-
+  const activeUsers = await db.select().from(telegramUsers).where(eq(telegramUsers.isActive, true));
   for (const user of activeUsers) {
     await sendTelegramMessage(botToken, user.telegramChatId, text);
   }
 }
 
+async function handleProvisionInput(botToken: string, chatId: string, text: string) {
+  const state = conversationState.get(chatId);
+  if (!state || state.type !== "provision") return false;
+
+  const session = state.session;
+  const input = text.trim();
+
+  if (input.toLowerCase() === "/cancel") {
+    conversationState.delete(chatId);
+    await sendTelegramMessage(botToken, chatId, "❌ Aprovisionamiento cancelado.");
+    return true;
+  }
+
+  if (session.step === "select_lease") {
+    const num = parseInt(input, 10);
+    if (isNaN(num) || num < 1 || num > session.leases.length) {
+      await sendTelegramMessage(botToken, chatId, `Número inválido. Escribe un número del 1 al ${session.leases.length} o /cancel para cancelar.`);
+      return true;
+    }
+    session.selectedLease = session.leases[num - 1];
+    session.step = "enter_name";
+    await sendTelegramMessage(botToken, chatId,
+      `*Paso 2/4 — Nombre del cliente*\n\n` +
+      `IP: ${session.selectedLease.address}\n` +
+      `MAC: ${session.selectedLease.macAddress}\n` +
+      `Host: ${session.selectedLease.hostName || "sin nombre"}\n\n` +
+      `Escribe el nombre del cliente:\n(Ej: Juan Pérez, Tienda Norte)`
+    );
+    return true;
+  }
+
+  if (session.step === "enter_name") {
+    session.clientName = input;
+    session.step = "enter_interface";
+
+    let interfaces: string[] = [];
+    try {
+      interfaces = await fetchInterfaceNames(session.device);
+    } catch {}
+
+    const ifaceList = interfaces.length > 0
+      ? `\nInterfaces disponibles: ${interfaces.join(", ")}`
+      : "";
+
+    await sendTelegramMessage(botToken, chatId,
+      `*Paso 3/4 — Interfaz ARP*\n\n` +
+      `Cliente: ${session.clientName}\n` +
+      `IP: ${session.selectedLease.address}\n\n` +
+      `Escribe el nombre de la interfaz para el binding ARP:${ifaceList}\n(Ej: ether2, bridge1)`
+    );
+    return true;
+  }
+
+  if (session.step === "enter_interface") {
+    session.arpInterface = input;
+    session.step = "enter_speed";
+
+    try {
+      await convertDhcpToStatic(session.device, session.selectedLease.id, session.clientName);
+      await sendTelegramMessage(botToken, chatId, "✅ IP fijada como estática.");
+    } catch {
+      await sendTelegramMessage(botToken, chatId, "⚠️ Error al fijar IP estática, continuando...");
+    }
+
+    try {
+      await addArpBinding(session.device, session.selectedLease.macAddress, session.selectedLease.address, session.arpInterface);
+      await sendTelegramMessage(botToken, chatId, "✅ Binding ARP creado.");
+    } catch {
+      await sendTelegramMessage(botToken, chatId, "⚠️ Error al crear ARP, continuando...");
+    }
+
+    await sendTelegramMessage(botToken, chatId,
+      `*Paso 4/4 — Velocidad*\n\n` +
+      `Cliente: ${session.clientName}\n` +
+      `IP: ${session.selectedLease.address}\n` +
+      `ARP: ${session.arpInterface}\n\n` +
+      `Escribe la velocidad en formato SUBIDA/BAJADA:\n(Ej: 10M/10M, 5M/20M, 512k/2M)\n\n` +
+      `M = Mbps, K = Kbps`
+    );
+    return true;
+  }
+
+  if (session.step === "enter_speed") {
+    const speedParts = input.split("/");
+    if (speedParts.length !== 2) {
+      await sendTelegramMessage(botToken, chatId, "Formato inválido. Usa SUBIDA/BAJADA (ej: 10M/10M)");
+      return true;
+    }
+
+    const upload = speedParts[0].trim();
+    const download = speedParts[1].trim();
+
+    try {
+      await addSimpleQueue(session.device, session.clientName, session.selectedLease.address, upload, download);
+      conversationState.delete(chatId);
+
+      await sendTelegramMessage(botToken, chatId,
+        `✅ *Aprovisionamiento completo*\n\n` +
+        `👤 Cliente: ${session.clientName}\n` +
+        `🌐 IP: ${session.selectedLease.address}\n` +
+        `🔗 MAC: ${session.selectedLease.macAddress}\n` +
+        `📡 Interfaz: ${session.arpInterface}\n` +
+        `⚡ Velocidad: ${upload}↑ / ${download}↓\n\n` +
+        `El cliente está listo.`
+      );
+    } catch (err) {
+      conversationState.delete(chatId);
+      await sendTelegramMessage(botToken, chatId,
+        `⚠️ *Parcialmente completado*\n\n` +
+        `IP estática y ARP creados, pero falló la cola de velocidad.\n` +
+        `Configura la cola manualmente en el router.\n\n` +
+        `Cliente: ${session.clientName}\nIP: ${session.selectedLease.address}\nVelocidad: ${upload}/${download}`
+      );
+    }
+    return true;
+  }
+
+  return false;
+}
+
 async function processCommand(botToken: string, chatId: string, text: string) {
   const [registeredUser] = await db
-    .select()
-    .from(telegramUsers)
+    .select().from(telegramUsers)
     .where(eq(telegramUsers.telegramChatId, chatId));
 
   if (!registeredUser || !registeredUser.isActive) {
-    await sendTelegramMessage(botToken, chatId, "⛔ No estás autorizado para usar este bot.");
+    await sendTelegramMessage(botToken, chatId, "⛔ No estás autorizado.");
     return;
   }
+
+  const isConversation = await handleProvisionInput(botToken, chatId, text);
+  if (isConversation) return;
 
   const command = text.trim().toLowerCase();
 
@@ -78,14 +205,14 @@ async function processCommand(botToken: string, chatId: string, text: string) {
 /devices — Lista de dispositivos
 /cpu — Carga de CPU
 /latency — Latencia y pérdida
-
-*Antenas:*
-/antenas — Estado de todas las antenas
+/antenas — Estado de antenas
 
 *Aprovisionamiento:*
 /leases — Ver leases DHCP
+/provision — Aprovisionar cliente paso a paso
 /queues — Ver colas de velocidad
 
+/cancel — Cancelar aprovisionamiento
 /help — Mostrar esta ayuda`;
     await sendTelegramMessage(botToken, chatId, help);
     return;
@@ -111,8 +238,7 @@ async function processCommand(botToken: string, chatId: string, text: string) {
 
       if (latestSystem) {
         const memUsed = latestSystem.totalMemory && latestSystem.freeMemory
-          ? (((latestSystem.totalMemory - latestSystem.freeMemory) / latestSystem.totalMemory) * 100).toFixed(0)
-          : "?";
+          ? (((latestSystem.totalMemory - latestSystem.freeMemory) / latestSystem.totalMemory) * 100).toFixed(0) : "?";
         line += `\n   CPU: ${latestSystem.cpuLoad ?? "?"}% | RAM: ${memUsed}% | Up: ${latestSystem.uptime || "?"}`;
       }
       if (latestLatency) {
@@ -224,12 +350,56 @@ async function processCommand(botToken: string, chatId: string, text: string) {
       return;
     }
 
-    const lines = leases.map((l) => {
+    const lines = leases.map((l, i) => {
       const icon = l.status === "bound" ? "🟢" : "🟡";
-      return `${icon} ${l.address} — ${l.hostName || "sin nombre"} — ${l.macAddress} [${l.status}]`;
+      const type = l.dynamic ? "DHCP" : "Estático";
+      return `${i + 1}. ${icon} ${l.address} — ${l.hostName || "sin nombre"} — ${l.macAddress} [${type}]`;
     });
 
-    await sendTelegramMessage(botToken, chatId, `📋 *DHCP Leases — ${device.name}*\n\n${lines.join("\n")}`);
+    await sendTelegramMessage(botToken, chatId,
+      `📋 *DHCP Leases — ${device.name}*\n\n${lines.join("\n")}\n\n` +
+      `Usa /provision para aprovisionar un cliente dinámico.`
+    );
+    return;
+  }
+
+  if (command === "/provision") {
+    const device = await getFirstOnlineDevice();
+    if (!device) {
+      await sendTelegramMessage(botToken, chatId, "No hay dispositivos en línea.");
+      return;
+    }
+
+    const allLeases = await fetchDhcpLeases(device);
+    const dynamicLeases = allLeases.filter((l) => l.dynamic);
+
+    if (dynamicLeases.length === 0) {
+      await sendTelegramMessage(botToken, chatId, "No hay leases dinámicos para aprovisionar.\nTodos los leases ya son estáticos.");
+      return;
+    }
+
+    conversationState.set(chatId, {
+      type: "provision",
+      session: {
+        step: "select_lease",
+        device,
+        leases: dynamicLeases,
+        selectedLease: dynamicLeases[0],
+        clientName: "",
+        arpInterface: "",
+      },
+    });
+
+    const lines = dynamicLeases.map((l, i) =>
+      `${i + 1}. 🟢 ${l.address} — ${l.hostName || "sin nombre"} — ${l.macAddress}`
+    );
+
+    await sendTelegramMessage(botToken, chatId,
+      `*Paso 1/4 — Seleccionar cliente*\n\n` +
+      `📋 *Leases dinámicos en ${device.name}:*\n\n${lines.join("\n")}\n\n` +
+      `Escribe el *número* del cliente que deseas aprovisionar:\n` +
+      `(o /cancel para cancelar)`
+    );
     return;
   }
 
@@ -252,6 +422,16 @@ async function processCommand(botToken: string, chatId: string, text: string) {
     });
 
     await sendTelegramMessage(botToken, chatId, `⚡ *Colas de Velocidad — ${device.name}*\n\n${lines.join("\n")}`);
+    return;
+  }
+
+  if (command === "/cancel") {
+    if (conversationState.has(chatId)) {
+      conversationState.delete(chatId);
+      await sendTelegramMessage(botToken, chatId, "❌ Operación cancelada.");
+    } else {
+      await sendTelegramMessage(botToken, chatId, "No hay ninguna operación en curso.");
+    }
     return;
   }
 
@@ -288,8 +468,7 @@ export async function pollTelegramUpdates() {
 
 async function getAlertState(alertType: string, targetId: number) {
   const [existing] = await db
-    .select()
-    .from(telegramAlertHistory)
+    .select().from(telegramAlertHistory)
     .where(and(
       eq(telegramAlertHistory.alertType, alertType),
       eq(telegramAlertHistory.targetId, targetId)
@@ -300,17 +479,12 @@ async function getAlertState(alertType: string, targetId: number) {
 async function updateAlertState(alertType: string, targetId: number, targetName: string, state: string) {
   const existing = await getAlertState(alertType, targetId);
   if (existing) {
-    await db
-      .update(telegramAlertHistory)
+    await db.update(telegramAlertHistory)
       .set({ lastState: state, lastNotifiedAt: new Date(), updatedAt: new Date() })
       .where(eq(telegramAlertHistory.id, existing.id));
   } else {
     await db.insert(telegramAlertHistory).values({
-      alertType,
-      targetId,
-      targetName,
-      lastState: state,
-      lastNotifiedAt: new Date(),
+      alertType, targetId, targetName, lastState: state, lastNotifiedAt: new Date(),
     });
   }
 }
@@ -378,7 +552,6 @@ export async function checkAndSendAlerts() {
 
   for (const ant of allAntennas) {
     if (!ant.ip || !ant.deviceId) continue;
-
     const [device] = await db.select().from(devices).where(eq(devices.id, ant.deviceId));
     if (!device || device.status !== "online") continue;
 
