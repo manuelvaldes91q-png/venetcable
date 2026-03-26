@@ -144,6 +144,35 @@ export const latencyMetrics = sqliteTable("latency_metrics", {
   ),
 });
 
+export const telegramConfig = sqliteTable("telegram_config", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  botToken: text("bot_token").notNull(),
+  botUsername: text("bot_username"),
+  webhookUrl: text("webhook_url"),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
+  alertDeviceOffline: integer("alert_device_offline", { mode: "boolean" }).notNull().default(true),
+  alertHighCpu: integer("alert_high_cpu", { mode: "boolean" }).notNull().default(true),
+  alertHighCpuThreshold: integer("alert_high_cpu_threshold").notNull().default(80),
+  alertHighLatency: integer("alert_high_latency", { mode: "boolean" }).notNull().default(true),
+  alertHighLatencyThreshold: integer("alert_high_latency_threshold").notNull().default(150),
+  alertIntervalMinutes: integer("alert_interval_minutes").notNull().default(5),
+  lastPollUpdateId: integer("last_poll_update_id").default(0),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+});
+
+export const telegramUsers = sqliteTable("telegram_users", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  telegramChatId: text("telegram_chat_id").notNull(),
+  telegramUsername: text("telegram_username"),
+  telegramFirstName: text("telegram_first_name"),
+  addedByUserId: integer("added_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  subscribedAlerts: text("subscribed_alerts").default("all"),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+});
+
 export const users = sqliteTable("users", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   username: text("username").notNull().unique(),

@@ -72,6 +72,15 @@
   - [x] Paso 4: Asignar velocidad (simple queue: upload/download)
   - [x] Tabla de colas existentes
   - [x] Link "Aprovisionamiento" en TopNav
+- [x] **Panel de Telegram**:
+  - [x] Tablas `telegram_config` (bot token, alertas, umbrales) + `telegram_users` (chat ID, username, estado activo)
+  - [x] API `/api/telegram` con acciones: save_config, add_user, remove_user, toggle_user, test_bot, send_test
+  - [x] API `/api/telegram/poll` para polling de comandos del bot
+  - [x] Servicio `src/lib/telegram.ts` con: polling de updates, comandos (/status, /cpu, /latency, /devices, /help), alertas automáticas
+  - [x] Página `/dashboard/telegram` con formulario de configuración del bot, gestión de usuarios por Chat ID, configuración de alertas
+  - [x] Alertas configurables: dispositivo offline, CPU alta (umbral), latencia alta (umbral)
+  - [x] Link "Telegram" en TopNav
+  - [x] Acceso restringido solo a rol admin
 
 ## Current Structure
 
@@ -85,7 +94,7 @@
 | `src/app/api/devices/route.ts` | Device CRUD API | ✅ Ready |
 | `src/app/api/metrics/route.ts` | Metrics collection API | ✅ Ready |
 | `src/app/api/dashboard/route.ts` | Dashboard data API | ✅ Ready |
-| `src/db/schema.ts` | Database schema (5 tables) | ✅ Ready |
+| `src/db/schema.ts` | Database schema (11 tables) | ✅ Ready |
 | `src/db/index.ts` | Database client | ✅ Ready |
 | `src/db/migrate.ts` | Migration runner | ✅ Ready |
 | `src/lib/mikrotik.ts` | MikroTik API client | ✅ Ready |
@@ -96,6 +105,10 @@
 | `src/app/dashboard/antennas/page.tsx` | Antenna monitoring page | ✅ Ready |
 | `src/app/api/antennas/route.ts` | Antenna CRUD API | ✅ Ready |
 | `src/app/api/antennas/readings/route.ts` | Antenna readings API | ✅ Ready |
+| `src/app/dashboard/telegram/page.tsx` | Telegram config panel (admin) | ✅ Ready |
+| `src/app/api/telegram/route.ts` | Telegram CRUD + bot actions API | ✅ Ready |
+| `src/app/api/telegram/poll/route.ts` | Telegram polling endpoint | ✅ Ready |
+| `src/lib/telegram.ts` | Telegram bot service (commands, alerts) | ✅ Ready |
 | `drizzle.config.ts` | Drizzle ORM config | ✅ Ready |
 
 ## Tech Stack Additions
@@ -117,3 +130,4 @@
 | 2026-03-25 | Rediseño profesional estilo Grafana, UI en español |
 | 2026-03-25 | WAN traffic monitoring, latency/packet loss with ping |
 | 2026-03-25 | Real-time bandwidth rates, antenna ping IP, provisioning system |
+| 2026-03-26 | Panel de Telegram: bot configuración, usuarios por Chat ID, alertas automáticas, comandos /status /cpu /latency /devices, solo admin |

@@ -12,6 +12,7 @@ export function TopNav() {
     { href: "/dashboard/provisioning", label: "Aprovisionamiento" },
     { href: "/dashboard/devices", label: "Dispositivos" },
     { href: "/dashboard/users", label: "Usuarios" },
+    { href: "/dashboard/telegram", label: "Telegram" },
   ];
 
   const handleLogout = async () => {
