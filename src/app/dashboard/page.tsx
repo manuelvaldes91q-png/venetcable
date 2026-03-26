@@ -150,14 +150,14 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchDashboard();
-    const interval = setInterval(fetchDashboard, 180000);
+    const interval = setInterval(fetchDashboard, 60000);
     return () => clearInterval(interval);
   }, [fetchDashboard]);
 
   useEffect(() => {
     if (selectedDevice) {
       fetchMetricHistory(selectedDevice);
-      const interval = setInterval(() => fetchMetricHistory(selectedDevice), 180000);
+      const interval = setInterval(() => fetchMetricHistory(selectedDevice), 60000);
       return () => clearInterval(interval);
     }
   }, [selectedDevice, fetchMetricHistory]);

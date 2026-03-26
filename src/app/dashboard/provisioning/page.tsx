@@ -43,7 +43,7 @@ export default function ProvisioningPage() {
 
   const [selectedLease, setSelectedLease] = useState<Lease | null>(null);
   const [clientName, setClientName] = useState("");
-  const [wanInterface, setWanInterface] = useState("ether1");
+  const [wanInterface, setWanInterface] = useState("SALIDA");
   const [uploadLimit, setUploadLimit] = useState("5M");
   const [downloadLimit, setDownloadLimit] = useState("10M");
 
