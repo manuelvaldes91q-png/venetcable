@@ -8,7 +8,7 @@ const KEY = new TextEncoder().encode(
 
 const publicPaths = ["/login", "/api/auth/login", "/api/auth/seed", "/favicon.ico"];
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (publicPaths.some((p) => pathname === p || pathname.startsWith(p))) {

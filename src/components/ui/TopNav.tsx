@@ -1,25 +1,27 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
+import Link from "next/link";
+import { useState, useEffect, useCallback, useMemo } from "react";
+
+const LINKS = [
+  { href: "/dashboard", label: "Panel Principal" },
+  { href: "/dashboard/antennas", label: "Antenas" },
+  { href: "/dashboard/provisioning", label: "Aprovisionamiento" },
+  { href: "/dashboard/devices", label: "Dispositivos" },
+  { href: "/dashboard/users", label: "Usuarios" },
+  { href: "/dashboard/telegram", label: "Telegram" },
+];
 
 export function TopNav() {
   const pathname = usePathname();
   const router = useRouter();
 
-  const links = [
-    { href: "/dashboard", label: "Panel Principal" },
-    { href: "/dashboard/antennas", label: "Antenas" },
-    { href: "/dashboard/provisioning", label: "Aprovisionamiento" },
-    { href: "/dashboard/devices", label: "Dispositivos" },
-    { href: "/dashboard/users", label: "Usuarios" },
-    { href: "/dashboard/telegram", label: "Telegram" },
-  ];
-
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/login");
     router.refresh();
-  };
+  }, [router]);
 
   return (
     <nav className="topbar">
@@ -34,14 +36,14 @@ export function TopNav() {
           </span>
         </div>
         <div className="topbar-nav ml-4">
-          {links.map((link) => (
-            <a
+          {LINKS.map((link) => (
+            <Link
               key={link.href}
               href={link.href}
               className={`topbar-nav-item ${pathname === link.href ? "active" : ""}`}
             >
               {link.label}
-            </a>
+            </Link>
           ))}
         </div>
       </div>
@@ -70,18 +72,21 @@ export function TopNav() {
 }
 
 function LiveClock() {
-  const now = new Date();
-  const timeStr = now.toLocaleTimeString("es-ES", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-  const dateStr = now.toLocaleDateString("es-ES", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const timeStr = useMemo(
+    () => now.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+    [now]
+  );
+  const dateStr = useMemo(
+    () => now.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short", year: "numeric" }),
+    [now]
+  );
 
   return (
     <div className="text-right">
