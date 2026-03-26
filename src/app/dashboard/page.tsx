@@ -417,6 +417,62 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {sel && sel.interfaces.length > 0 && (
+          <div className="panel mb-6">
+            <div className="panel-header">
+              <h3 style={{ fontSize: "13px", fontWeight: 600, color: "#d8d9da" }}>Interfaces — {sel.name}</h3>
+              <span style={{ fontSize: "11px", color: "#5a5f6a" }}>{sel.interfaces.length}</span>
+            </div>
+            <div className="panel-body" style={{ padding: "12px 16px" }}>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div>
+                  <p style={{ fontSize: "10px", fontWeight: 600, color: "#73bf69", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "8px" }}>
+                    🟢 Conectadas ({sel.interfaces.filter((i) => i.status === "running").length})
+                  </p>
+                  {sel.interfaces.filter((i) => i.status === "running").length === 0 ? (
+                    <p style={{ fontSize: "12px", color: "#5a5f6a" }}>Ninguna interfaz activa</p>
+                  ) : (
+                    sel.interfaces.filter((i) => i.status === "running").map((iface) => {
+                      const prev = sel.prevInterfaces?.find((p) => p.interfaceName === iface.interfaceName && p.timestamp !== iface.timestamp);
+                      let rateRx = 0, rateTx = 0;
+                      if (prev) {
+                        const dt = Math.max(1, (new Date(iface.timestamp).getTime() - new Date(prev.timestamp).getTime()) / 1000);
+                        rateRx = Math.max(0, (iface.rxBytes - prev.rxBytes) * 8 / dt);
+                        rateTx = Math.max(0, (iface.txBytes - prev.txBytes) * 8 / dt);
+                      }
+                      const fmt = (bps: number) => bps > 1_000_000 ? `${(bps / 1_000_000).toFixed(1)} Mbps` : bps > 1_000 ? `${(bps / 1_000).toFixed(0)} Kbps` : `${bps.toFixed(0)} bps`;
+                      return (
+                        <div key={iface.interfaceName} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "4px 0", fontSize: "12px", color: "#d8d9da" }}>
+                          <span style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: "#73bf69", flexShrink: 0 }} />
+                          <span style={{ fontWeight: 600 }}>{iface.interfaceName}</span>
+                          <span style={{ color: "#b877d9" }}>↓ {fmt(rateRx)}</span>
+                          <span style={{ color: "#ff9830" }}>↑ {fmt(rateTx)}</span>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+                <div>
+                  <p style={{ fontSize: "10px", fontWeight: 600, color: "#f2495c", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "8px" }}>
+                    🔴 Desconectadas ({sel.interfaces.filter((i) => i.status !== "running").length})
+                  </p>
+                  {sel.interfaces.filter((i) => i.status !== "running").length === 0 ? (
+                    <p style={{ fontSize: "12px", color: "#5a5f6a" }}>Todas las interfaces están activas</p>
+                  ) : (
+                    sel.interfaces.filter((i) => i.status !== "running").map((iface) => (
+                      <div key={iface.interfaceName} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "4px 0", fontSize: "12px", color: "#d8d9da" }}>
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: "#f2495c", flexShrink: 0 }} />
+                        <span style={{ fontWeight: 600 }}>{iface.interfaceName}</span>
+                        <span style={{ color: "#5a5f6a" }}>detenida</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {devices.length === 0 ? (
           <div className="panel" style={{ textAlign: "center", padding: "48px 24px" }}>
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#5a5f6a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ margin: "0 auto 12px" }}>
