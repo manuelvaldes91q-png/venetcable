@@ -552,7 +552,7 @@ export default function DashboardPage() {
                   )}
                 </div>
 
-                {Object.entries(trafficByInterface).filter(([name]) => name !== wanName).map(([ifaceName, data]) =>
+                {Object.entries(trafficByInterface).filter(([name]) => name !== wanName && !["ether2", "ether3", "ether4", "ether5"].includes(name)).map(([ifaceName, data]) =>
                   data.length > 0 ? (
                     <div key={ifaceName} className="mb-4">
                       <MetricAreaChart
