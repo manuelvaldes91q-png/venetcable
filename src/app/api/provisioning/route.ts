@@ -50,7 +50,10 @@ export async function POST(request: NextRequest) {
 
     switch (action) {
       case "list_leases": {
-        const leases = await fetchDhcpLeases(mikrotik);
+        const allLeases = await fetchDhcpLeases(mikrotik);
+        const leases = allLeases.filter(
+          (l) => l.status !== "static" && l.status !== "blocked"
+        );
         return NextResponse.json({ leases });
       }
 

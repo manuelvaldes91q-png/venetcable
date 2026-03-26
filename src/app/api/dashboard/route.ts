@@ -8,10 +8,14 @@ import {
   latencyMetrics,
 } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
+import { pingHost } from "@/lib/ping";
 
 export async function GET() {
   try {
-    const allDevices = await db.select().from(devices);
+    const [allDevices, googleDnsPing] = await Promise.all([
+      db.select().from(devices),
+      pingHost("8.8.8.8", 3),
+    ]);
 
     const devicesWithLatestMetrics = await Promise.all(
       allDevices.map(async (device) => {
@@ -83,6 +87,7 @@ export async function GET() {
         offlineDevices,
       },
       devices: devicesWithLatestMetrics,
+      googleDnsPing,
     });
   } catch (error) {
     return NextResponse.json(

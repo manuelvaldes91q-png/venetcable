@@ -47,9 +47,10 @@ export async function POST(request: NextRequest) {
       encryptedPassword: device.encryptedPassword,
     };
 
-    const [metrics, ping] = await Promise.all([
+    const [metrics, ping, googleDnsPing] = await Promise.all([
       collectAllMetrics(mikrotikDevice),
       pingHost(device.host, 5),
+      pingHost("8.8.8.8", 3),
     ]);
 
     const now = new Date();
@@ -105,7 +106,7 @@ export async function POST(request: NextRequest) {
       .set({ status: "online", lastSeen: now, updatedAt: now })
       .where(eq(devices.id, device.id));
 
-    return NextResponse.json({ success: true, metrics, ping });
+    return NextResponse.json({ success: true, metrics, ping, googleDnsPing });
   } catch (error) {
     return NextResponse.json(
       {

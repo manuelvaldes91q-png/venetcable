@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { TopNav } from "@/components/ui/TopNav";
-import { MetricLineChart, MetricAreaChart, MetricBarChart } from "@/components/ui/Charts";
+import { MetricLineChart, MetricAreaChart } from "@/components/ui/Charts";
 import { DeviceCard } from "@/components/ui/Cards";
 import { formatBytes } from "@/lib/utils";
 
@@ -59,6 +59,13 @@ interface DashboardData {
     offlineDevices: number;
   };
   devices: DashboardDevice[];
+  googleDnsPing: {
+    rttAvg: number;
+    rttMin: number;
+    rttMax: number;
+    packetLoss: number;
+    success: boolean;
+  } | null;
 }
 
 interface MetricHistory {
@@ -143,14 +150,14 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchDashboard();
-    const interval = setInterval(fetchDashboard, 30000);
+    const interval = setInterval(fetchDashboard, 180000);
     return () => clearInterval(interval);
   }, [fetchDashboard]);
 
   useEffect(() => {
     if (selectedDevice) {
       fetchMetricHistory(selectedDevice);
-      const interval = setInterval(() => fetchMetricHistory(selectedDevice), 15000);
+      const interval = setInterval(() => fetchMetricHistory(selectedDevice), 180000);
       return () => clearInterval(interval);
     }
   }, [selectedDevice, fetchMetricHistory]);
@@ -259,19 +266,6 @@ export default function DashboardPage() {
     }
   }
 
-  const latencyChartData = metricHistory?.latency?.slice().reverse().map((l) => ({
-    timestamp: formatTime(l.timestamp),
-    "RTT (ms)": l.rttAvg,
-    "Min": l.rttMin,
-    "Max": l.rttMax,
-  })) || [];
-
-  const packetLossChartData = metricHistory?.latency?.slice().reverse().map((l) => ({
-    timestamp: formatTime(l.timestamp),
-    "Pérdida %": l.packetLoss,
-    "Jitter (ms)": l.jitter,
-  })) || [];
-
   const trafficByInterface: Record<string, { timestamp: string; "Rx (Mbps)": number; "Tx (Mbps)": number }[]> = {};
   if (metricHistory?.interfaces) {
     const sorted = metricHistory.interfaces.slice().reverse();
@@ -288,10 +282,6 @@ export default function DashboardPage() {
       });
     }
   }
-
-  const firewallChartData = metricHistory?.firewall?.slice().reverse().map((f) => ({
-    timestamp: formatTime(f.timestamp), Filtro: f.filterRules, NAT: f.natRules, Mangle: f.mangleRules, Fasttrack: f.fasttrackRules,
-  })) || [];
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: "#0b0c0e" }}>
@@ -318,11 +308,11 @@ export default function DashboardPage() {
             <p style={{ fontSize: "28px", fontWeight: 700, color: "#f2495c", fontVariantNumeric: "tabular-nums" }}>{summary.offlineDevices}</p>
           </div></div>
           <div className="panel"><div className="panel-body text-center">
-            <p style={{ fontSize: "10px", color: "#5a5f6a", textTransform: "uppercase", letterSpacing: "0.04em" }}>Latencia WAN</p>
-            <p style={{ fontSize: "28px", fontWeight: 700, color: sel?.latency ? getLatencyColor(sel.latency.rttAvg) : "#5a5f6a", fontVariantNumeric: "tabular-nums" }}>
-              {sel?.latency ? `${sel.latency.rttAvg}` : "—"}
+            <p style={{ fontSize: "10px", color: "#5a5f6a", textTransform: "uppercase", letterSpacing: "0.04em" }}>DNS 8.8.8.8</p>
+            <p style={{ fontSize: "28px", fontWeight: 700, color: dashboardData?.googleDnsPing?.success ? getLatencyColor(dashboardData.googleDnsPing.rttAvg) : "#f2495c", fontVariantNumeric: "tabular-nums" }}>
+              {dashboardData?.googleDnsPing?.success ? `${dashboardData.googleDnsPing.rttAvg}` : "—"}
             </p>
-            {sel?.latency && <p style={{ fontSize: "10px", color: "#5a5f6a" }}>ms</p>}
+            {dashboardData?.googleDnsPing?.success && <p style={{ fontSize: "10px", color: "#5a5f6a" }}>ms</p>}
           </div></div>
         </div>
 
@@ -457,40 +447,26 @@ export default function DashboardPage() {
                       <h3 style={{ fontSize: "13px", fontWeight: 600, color: "#d8d9da" }}>Latencia</h3>
                     </div>
                     <div className="panel-body">
-                      {sel.latency ? (
-                        <div className="flex justify-around">
-                          <WanGauge
-                            label="RTT Promedio"
-                            value={sel.latency.rttAvg}
-                            unit="ms"
-                            color={getLatencyColor(sel.latency.rttAvg)}
-                          />
-                          <div className="text-center">
-                            <p style={{ fontSize: "9px", color: "#5a5f6a", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "4px" }}>Calidad</p>
-                            <p style={{ fontSize: "14px", fontWeight: 700, color: getLatencyColor(sel.latency.rttAvg) }}>
-                              {getLatencyLabel(sel.latency.rttAvg)}
-                            </p>
-                          </div>
-                          <WanGauge
-                            label="Pérdida"
-                            value={sel.latency.packetLoss}
-                            unit="%"
-                            color={sel.latency.packetLoss > 5 ? "#f2495c" : sel.latency.packetLoss > 0 ? "#ff9830" : "#73bf69"}
-                          />
-                          <WanGauge
-                            label="Jitter"
-                            value={sel.latency.jitter}
-                            unit="ms"
-                            color={sel.latency.jitter > 20 ? "#ff9830" : "#73bf69"}
-                          />
-                        </div>
-                      ) : (
-                        <div style={{ textAlign: "center", padding: "20px 0" }}>
-                          <p style={{ fontSize: "12px", color: "#5a5f6a" }}>
-                            Presione &quot;Recolectar&quot; para medir latencia
+                      <div className="flex justify-around mb-4">
+                        <div className="text-center">
+                          <p style={{ fontSize: "9px", color: "#5a5f6a", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "4px" }}>Router ({sel.host})</p>
+                          <p style={{ fontSize: "24px", fontWeight: 700, color: sel.latency ? getLatencyColor(sel.latency.rttAvg) : "#5a5f6a", fontVariantNumeric: "tabular-nums" }}>
+                            {sel.latency ? sel.latency.rttAvg : "—"}
                           </p>
+                          {sel.latency && <p style={{ fontSize: "10px", color: "#5a5f6a" }}>ms — {getLatencyLabel(sel.latency.rttAvg)}</p>}
                         </div>
-                      )}
+                        <div className="text-center">
+                          <p style={{ fontSize: "9px", color: "#5a5f6a", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "4px" }}>Google DNS (8.8.8.8)</p>
+                          <p style={{ fontSize: "24px", fontWeight: 700, color: dashboardData?.googleDnsPing?.success ? getLatencyColor(dashboardData.googleDnsPing.rttAvg) : "#f2495c", fontVariantNumeric: "tabular-nums" }}>
+                            {dashboardData?.googleDnsPing?.success ? dashboardData.googleDnsPing.rttAvg : "—"}
+                          </p>
+                          {dashboardData?.googleDnsPing?.success && (
+                            <p style={{ fontSize: "10px", color: "#5a5f6a" }}>
+                              ms — {getLatencyLabel(dashboardData.googleDnsPing.rttAvg)} — Pérdida: {dashboardData.googleDnsPing.packetLoss}%
+                            </p>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -507,30 +483,6 @@ export default function DashboardPage() {
                     />
                   </div>
                 )}
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-                  {latencyChartData.length > 0 && (
-                    <MetricLineChart
-                      data={latencyChartData}
-                      dataKeys={[
-                        { key: "RTT (ms)", color: "#3b82f6", name: "Promedio" },
-                        { key: "Min", color: "#73bf69", name: "Mínimo" },
-                        { key: "Max", color: "#f2495c", name: "Máximo" },
-                      ]}
-                      title="Latencia (RTT)"
-                    />
-                  )}
-                  {packetLossChartData.length > 0 && (
-                    <MetricAreaChart
-                      data={packetLossChartData}
-                      dataKeys={[
-                        { key: "Pérdida %", color: "#f2495c", name: "Pérdida de Paquetes" },
-                        { key: "Jitter (ms)", color: "#ff9830", name: "Jitter" },
-                      ]}
-                      title="Pérdida de Paquetes y Jitter"
-                    />
-                  )}
-                </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
                   {cpuChartData.length > 0 && (
@@ -565,21 +517,6 @@ export default function DashboardPage() {
                       />
                     </div>
                   ) : null
-                )}
-
-                {firewallChartData.length > 0 && (
-                  <div className="mb-4">
-                    <MetricBarChart
-                      data={firewallChartData}
-                      dataKeys={[
-                        { key: "Filtro", color: "#3b82f6", name: "Filtro" },
-                        { key: "NAT", color: "#73bf69", name: "NAT" },
-                        { key: "Mangle", color: "#ff9830", name: "Mangle" },
-                        { key: "Fasttrack", color: "#f2495c", name: "Fasttrack" },
-                      ]}
-                      title="Distribución de Reglas de Firewall"
-                    />
-                  </div>
                 )}
 
                 {sel.firewall && (

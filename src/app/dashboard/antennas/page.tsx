@@ -100,7 +100,7 @@ export default function AntennasPage() {
 
   useEffect(() => {
     fetchAntennas();
-    const interval = setInterval(fetchAntennas, 30000);
+    const interval = setInterval(fetchAntennas, 180000);
     return () => clearInterval(interval);
   }, [fetchAntennas]);
 
