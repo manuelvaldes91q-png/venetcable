@@ -441,12 +441,6 @@ export default function DashboardPage() {
                               color="#b877d9"
                             />
                             <WanGauge
-                              label="Subida (Tx)"
-                              value={wanTxRate > 1_000_000 ? (wanTxRate / 1_000_000).toFixed(1) : wanTxRate > 1_000 ? (wanTxRate / 1_000).toFixed(0) : wanTxRate.toFixed(0)}
-                              unit={wanTxRate > 1_000_000 ? "Mbps" : wanTxRate > 1_000 ? "Kbps" : "bps"}
-                              color="#ff9830"
-                            />
-                            <WanGauge
                               label="Rx Total"
                               value={formatBytes(wanInterface.rxBytes).split(" ")[0]}
                               unit={formatBytes(wanInterface.rxBytes).split(" ")[1]}
@@ -525,7 +519,6 @@ export default function DashboardPage() {
                       data={wanTrafficChart}
                       dataKeys={[
                         { key: "Rx (Mbps)", color: "#b877d9", name: "Descarga" },
-                        { key: "Tx (Mbps)", color: "#ff9830", name: "Subida" },
                       ]}
                       title={`Tráfico WAN — ${wanName}`}
                     />
