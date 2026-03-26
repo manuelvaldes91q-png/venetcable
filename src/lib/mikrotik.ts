@@ -295,6 +295,32 @@ export async function pingFromDevice(
   }
 }
 
+export async function tracerouteFromDevice(
+  device: MikroTikDevice,
+  target: string,
+  maxHops = 20
+): Promise<{ hop: number; address: string; time: string }[]> {
+  const conn = await connectToDevice(device);
+  try {
+    const response = await conn.write([
+      "/tool/traceroute",
+      `=address=${target}`,
+      `=count=1`,
+      `=max-hops=${maxHops}`,
+    ]);
+
+    return response.map((entry: Record<string, string>, index: number) => ({
+      hop: index + 1,
+      address: entry["address"] || entry["host"] || "*",
+      time: entry["time"] || "—",
+    }));
+  } catch {
+    return [];
+  } finally {
+    await conn.close();
+  }
+}
+
 export interface DhcpLease {
   id: string;
   address: string;

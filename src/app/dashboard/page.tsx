@@ -128,6 +128,13 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [wanInput, setWanInput] = useState("");
   const [savingWan, setSavingWan] = useState(false);
+  const [diagTarget, setDiagTarget] = useState("8.8.8.8");
+  const [diagMode, setDiagMode] = useState<"ping" | "traceroute">("ping");
+  const [pingResult, setPingResult] = useState<{
+    rttAvg: number; rttMin: number; rttMax: number; packetLoss: number; success: boolean;
+  } | null>(null);
+  const [tracerResult, setTracerResult] = useState<{ hop: number; address: string; time: string }[]>([]);
+  const [diagRunning, setDiagRunning] = useState(false);
 
   const collectAndRefresh = useCallback(async (deviceId: number) => {
     setCollecting((p) => ({ ...p, [deviceId]: true }));
@@ -187,6 +194,41 @@ export default function DashboardPage() {
 
   const collectMetrics = async (deviceId: number) => {
     await collectAndRefresh(deviceId);
+  };
+
+  const runDiagnostic = async () => {
+    if (!selectedDevice || !diagTarget) return;
+    setDiagRunning(true);
+    setPingResult(null);
+    setTracerResult([]);
+    try {
+      const res = await fetch("/api/network-tools", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: diagMode,
+          deviceId: selectedDevice,
+          target: diagTarget,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (diagMode === "ping") {
+          setPingResult({
+            rttAvg: data.rttAvg,
+            rttMin: data.rttMin,
+            rttMax: data.rttMax,
+            packetLoss: data.packetLoss,
+            success: data.success,
+          });
+        } else {
+          setTracerResult(data.hops || []);
+        }
+      }
+    } catch {
+    } finally {
+      setDiagRunning(false);
+    }
   };
 
   const saveWanInterface = async () => {
@@ -549,65 +591,123 @@ export default function DashboardPage() {
                   </div>
                 )}
 
-                {sel.interfaces.length > 0 && (
-                  <div className="panel">
-                    <div className="panel-header">
-                      <h3 style={{ fontSize: "13px", fontWeight: 600, color: "#d8d9da" }}>Interfaces de Red</h3>
-                    </div>
-                    <div className="panel-body" style={{ padding: 0 }}>
-                      <table style={{ width: "100%", fontSize: "12px" }}>
-                        <thead>
-                          <tr style={{ borderBottom: "1px solid #2c3039" }}>
-                            {["Nombre", "Estado", "Bajada (Rx)", "Subida (Tx)"].map((h) => (
-                              <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: "#5a5f6a", fontWeight: 600, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.04em" }}>{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                            {sel.interfaces.map((iface, i) => {
-                              const prev = sel.prevInterfaces?.find(
-                                (p) => p.interfaceName === iface.interfaceName && p.timestamp !== iface.timestamp
-                              );
-                              let rxRate = "—";
-                              let txRate = "—";
-                              if (prev) {
-                                const dt = Math.max(1, (new Date(iface.timestamp).getTime() - new Date(prev.timestamp).getTime()) / 1000);
-                                const rxBytesSec = Math.max(0, (iface.rxBytes - prev.rxBytes) / dt);
-                                const txBytesSec = Math.max(0, (iface.txBytes - prev.txBytes) / dt);
-                                rxRate = rxBytesSec > 1_000_000 ? `${(rxBytesSec / 1_000_000).toFixed(1)} MB/s`
-                                  : rxBytesSec > 1_000 ? `${(rxBytesSec / 1_000).toFixed(0)} KB/s`
-                                  : `${rxBytesSec.toFixed(0)} B/s`;
-                                txRate = txBytesSec > 1_000_000 ? `${(txBytesSec / 1_000_000).toFixed(1)} MB/s`
-                                  : txBytesSec > 1_000 ? `${(txBytesSec / 1_000).toFixed(0)} KB/s`
-                                  : `${txBytesSec.toFixed(0)} B/s`;
-                              }
-                              return (
-                                <tr key={i} style={{ borderBottom: "1px solid #1e2028" }}
-                                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.02)")}
-                                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-                                >
-                                  <td style={{ padding: "8px 16px", color: "#d8d9da", fontWeight: 500 }}>
-                                    {iface.interfaceName}
-                                    {iface.interfaceName === wanName && (
-                                      <span style={{ marginLeft: 6, fontSize: "9px", color: "#ff9830", fontWeight: 700, backgroundColor: "rgba(255,152,48,0.1)", padding: "1px 4px", borderRadius: 2 }}>WAN</span>
-                                    )}
-                                  </td>
-                                  <td style={{ padding: "8px 16px" }}>
-                                    <span className="inline-flex items-center gap-1.5" style={{ color: iface.status === "running" ? "#73bf69" : "#5a5f6a", fontSize: "11px" }}>
-                                      <span className={`status-dot ${iface.status === "running" ? "status-dot-online" : "status-dot-offline"}`} style={{ width: 6, height: 6 }} />
-                                      {iface.status === "running" ? "Activo" : "Detenido"}
-                                    </span>
-                                  </td>
-                                  <td style={{ padding: "8px 16px", color: "#b877d9", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{rxRate}</td>
-                                  <td style={{ padding: "8px 16px", color: "#ff9830", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{txRate}</td>
-                                </tr>
-                              );
-                            })}
-                        </tbody>
-                      </table>
-                    </div>
+                <div className="panel">
+                  <div className="panel-header">
+                    <h3 style={{ fontSize: "13px", fontWeight: 600, color: "#d8d9da" }}>Herramientas de Red</h3>
                   </div>
-                )}
+                  <div className="panel-body">
+                    <div className="flex items-center gap-2 mb-4">
+                      <input
+                        type="text"
+                        value={diagTarget}
+                        onChange={(e) => setDiagTarget(e.target.value)}
+                        placeholder="IP o dominio (ej: 8.8.8.8, google.com)"
+                        className="input-field"
+                        style={{ flex: 1 }}
+                        onKeyDown={(e) => e.key === "Enter" && runDiagnostic()}
+                      />
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => setDiagMode("ping")}
+                          className={diagMode === "ping" ? "btn-primary" : "btn-secondary"}
+                          style={{ padding: "6px 12px", fontSize: "11px" }}
+                        >
+                          Ping
+                        </button>
+                        <button
+                          onClick={() => setDiagMode("traceroute")}
+                          className={diagMode === "traceroute" ? "btn-primary" : "btn-secondary"}
+                          style={{ padding: "6px 12px", fontSize: "11px" }}
+                        >
+                          Traceroute
+                        </button>
+                      </div>
+                      <button
+                        onClick={runDiagnostic}
+                        disabled={diagRunning || !diagTarget || !selectedDevice}
+                        className="btn-success"
+                        style={{ padding: "6px 16px" }}
+                      >
+                        {diagRunning ? "Ejecutando..." : "Ejecutar"}
+                      </button>
+                    </div>
+
+                    {diagMode === "ping" && pingResult && (
+                      <div>
+                        <div className="flex justify-around mb-3" style={{ padding: "12px 0", borderTop: "1px solid #2c3039", borderBottom: "1px solid #2c3039" }}>
+                          <div className="text-center">
+                            <p style={{ fontSize: "9px", color: "#5a5f6a", textTransform: "uppercase", letterSpacing: "0.06em" }}>Promedio</p>
+                            <p style={{ fontSize: "22px", fontWeight: 700, color: getLatencyColor(pingResult.rttAvg), fontVariantNumeric: "tabular-nums" }}>
+                              {pingResult.success ? `${pingResult.rttAvg} ms` : "—"}
+                            </p>
+                          </div>
+                          <div className="text-center">
+                            <p style={{ fontSize: "9px", color: "#5a5f6a", textTransform: "uppercase", letterSpacing: "0.06em" }}>Mínimo</p>
+                            <p style={{ fontSize: "22px", fontWeight: 700, color: "#73bf69", fontVariantNumeric: "tabular-nums" }}>
+                              {pingResult.success ? `${pingResult.rttMin} ms` : "—"}
+                            </p>
+                          </div>
+                          <div className="text-center">
+                            <p style={{ fontSize: "9px", color: "#5a5f6a", textTransform: "uppercase", letterSpacing: "0.06em" }}>Máximo</p>
+                            <p style={{ fontSize: "22px", fontWeight: 700, color: "#f2495c", fontVariantNumeric: "tabular-nums" }}>
+                              {pingResult.success ? `${pingResult.rttMax} ms` : "—"}
+                            </p>
+                          </div>
+                          <div className="text-center">
+                            <p style={{ fontSize: "9px", color: "#5a5f6a", textTransform: "uppercase", letterSpacing: "0.06em" }}>Pérdida</p>
+                            <p style={{ fontSize: "22px", fontWeight: 700, color: pingResult.packetLoss > 0 ? "#f2495c" : "#73bf69", fontVariantNumeric: "tabular-nums" }}>
+                              {pingResult.packetLoss}%
+                            </p>
+                          </div>
+                          <div className="text-center">
+                            <p style={{ fontSize: "9px", color: "#5a5f6a", textTransform: "uppercase", letterSpacing: "0.06em" }}>Estado</p>
+                            <p style={{ fontSize: "14px", fontWeight: 700, color: pingResult.success ? "#73bf69" : "#f2495c" }}>
+                              {pingResult.success ? "Alcanzable" : "No responde"}
+                            </p>
+                          </div>
+                        </div>
+                        <p style={{ fontSize: "10px", color: "#5a5f6a" }}>
+                          Ping desde {sel.name} ({sel.host}) → {diagTarget}
+                        </p>
+                      </div>
+                    )}
+
+                    {diagMode === "traceroute" && tracerResult.length > 0 && (
+                      <div>
+                        <table style={{ width: "100%", fontSize: "12px", borderTop: "1px solid #2c3039" }}>
+                          <thead>
+                            <tr style={{ borderBottom: "1px solid #2c3039" }}>
+                              {["Salto", "Dirección", "Tiempo"].map((h) => (
+                                <th key={h} style={{ padding: "8px 12px", textAlign: "left", color: "#5a5f6a", fontWeight: 600, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.04em" }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {tracerResult.map((hop) => (
+                              <tr key={hop.hop} style={{ borderBottom: "1px solid #1e2028" }}
+                                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.02)")}
+                                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                              >
+                                <td style={{ padding: "6px 12px", color: "#5a5f6a", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{hop.hop}</td>
+                                <td style={{ padding: "6px 12px", color: "#d8d9da", fontVariantNumeric: "tabular-nums" }}>{hop.address}</td>
+                                <td style={{ padding: "6px 12px", color: "#8e8e8e", fontVariantNumeric: "tabular-nums" }}>{hop.time}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        <p style={{ fontSize: "10px", color: "#5a5f6a", marginTop: "8px" }}>
+                          Traceroute desde {sel.name} ({sel.host}) → {diagTarget}
+                        </p>
+                      </div>
+                    )}
+
+                    {!pingResult && tracerResult.length === 0 && !diagRunning && (
+                      <div style={{ textAlign: "center", padding: "16px 0", color: "#5a5f6a", fontSize: "12px" }}>
+                        Ingrese una IP o dominio y presione Ejecutar para diagnosticar
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
           </>
