@@ -429,34 +429,36 @@ async function processCommand(botToken: string, chatId: string, text: string) {
       return;
     }
 
-    const lines: string[] = [];
-    for (const ant of allAntennas) {
-      let statusIcon = "🟡";
-      let pingInfo = "sin ping";
+    const down: string[] = [];
+    const up: string[] = [];
 
+    for (const ant of allAntennas) {
       if (ant.ip && ant.deviceId) {
         const [device] = await db.select().from(devices).where(eq(devices.id, ant.deviceId));
         if (device && device.status === "online") {
           const result = await pingFromDevice(toMikroTikDevice(device), ant.ip, 3);
           if (result.success) {
-            statusIcon = "🟢";
-            pingInfo = `${result.rttAvg}ms`;
+            up.push(`${ant.name} — ${ant.ip} — ${result.rttAvg}ms`);
           } else {
-            statusIcon = "🔴";
-            pingInfo = "sin respuesta";
+            down.push(`${ant.name} — ${ant.ip}`);
           }
         } else {
-          statusIcon = "🟡";
-          pingInfo = "router offline";
+          down.push(`${ant.name} — ${ant.ip} (router offline)`);
         }
-      } else if (ant.ip) {
-        pingInfo = "sin router";
+      } else {
+        down.push(`${ant.name} — ${ant.ip || "sin IP"}`);
       }
-
-      lines.push(`${statusIcon} *${ant.name}* — ${ant.ip || "sin IP"} — ${pingInfo}${ant.location ? ` (${ant.location})` : ""}`);
     }
 
-    await sendTelegramMessage(botToken, chatId, `📡 *Estado de Antenas*\n\n${lines.join("\n")}`);
+    let msg = "";
+    if (down.length > 0) {
+      msg += `🔴 *CAÍDAS (${down.length})*\n${down.map((l) => `  • ${l}`).join("\n")}\n\n`;
+    }
+    if (up.length > 0) {
+      msg += `🟢 *PRENDIDAS (${up.length})*\n${up.map((l) => `  • ${l}`).join("\n")}`;
+    }
+
+    await sendTelegramMessage(botToken, chatId, msg || "No hay antenas.");
     return;
   }
 
