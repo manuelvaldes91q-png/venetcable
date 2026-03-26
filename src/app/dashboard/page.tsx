@@ -50,6 +50,13 @@ interface DashboardDevice {
     txBytes: number;
     timestamp: string;
   }[];
+  googleDnsPing: {
+    rttAvg: number;
+    rttMin: number;
+    rttMax: number;
+    packetLoss: number;
+    success: boolean;
+  } | null;
 }
 
 interface DashboardData {
@@ -309,10 +316,10 @@ export default function DashboardPage() {
           </div></div>
           <div className="panel"><div className="panel-body text-center">
             <p style={{ fontSize: "10px", color: "#5a5f6a", textTransform: "uppercase", letterSpacing: "0.04em" }}>DNS 8.8.8.8</p>
-            <p style={{ fontSize: "28px", fontWeight: 700, color: dashboardData?.googleDnsPing?.success ? getLatencyColor(dashboardData.googleDnsPing.rttAvg) : "#f2495c", fontVariantNumeric: "tabular-nums" }}>
-              {dashboardData?.googleDnsPing?.success ? `${dashboardData.googleDnsPing.rttAvg}` : "—"}
+            <p style={{ fontSize: "28px", fontWeight: 700, color: sel?.googleDnsPing?.success ? getLatencyColor(sel.googleDnsPing.rttAvg) : "#5a5f6a", fontVariantNumeric: "tabular-nums" }}>
+              {sel?.googleDnsPing?.success ? `${sel.googleDnsPing.rttAvg}` : "—"}
             </p>
-            {dashboardData?.googleDnsPing?.success && <p style={{ fontSize: "10px", color: "#5a5f6a" }}>ms</p>}
+            {sel?.googleDnsPing?.success && <p style={{ fontSize: "10px", color: "#5a5f6a" }}>ms</p>}
           </div></div>
         </div>
 
@@ -456,13 +463,13 @@ export default function DashboardPage() {
                           {sel.latency && <p style={{ fontSize: "10px", color: "#5a5f6a" }}>ms — {getLatencyLabel(sel.latency.rttAvg)}</p>}
                         </div>
                         <div className="text-center">
-                          <p style={{ fontSize: "9px", color: "#5a5f6a", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "4px" }}>Google DNS (8.8.8.8)</p>
-                          <p style={{ fontSize: "24px", fontWeight: 700, color: dashboardData?.googleDnsPing?.success ? getLatencyColor(dashboardData.googleDnsPing.rttAvg) : "#f2495c", fontVariantNumeric: "tabular-nums" }}>
-                            {dashboardData?.googleDnsPing?.success ? dashboardData.googleDnsPing.rttAvg : "—"}
+                          <p style={{ fontSize: "9px", color: "#5a5f6a", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "4px" }}>DNS 8.8.8.8 (desde router)</p>
+                          <p style={{ fontSize: "24px", fontWeight: 700, color: sel.googleDnsPing?.success ? getLatencyColor(sel.googleDnsPing.rttAvg) : "#f2495c", fontVariantNumeric: "tabular-nums" }}>
+                            {sel.googleDnsPing?.success ? sel.googleDnsPing.rttAvg : "—"}
                           </p>
-                          {dashboardData?.googleDnsPing?.success && (
+                          {sel.googleDnsPing?.success && (
                             <p style={{ fontSize: "10px", color: "#5a5f6a" }}>
-                              ms — {getLatencyLabel(dashboardData.googleDnsPing.rttAvg)} — Pérdida: {dashboardData.googleDnsPing.packetLoss}%
+                              ms — {getLatencyLabel(sel.googleDnsPing.rttAvg)} — Pérdida: {sel.googleDnsPing.packetLoss}%
                             </p>
                           )}
                         </div>

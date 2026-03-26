@@ -8,14 +8,11 @@ import {
   latencyMetrics,
 } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
-import { pingHost } from "@/lib/ping";
+import { pingFromDevice, type MikroTikDevice } from "@/lib/mikrotik";
 
 export async function GET() {
   try {
-    const [allDevices, googleDnsPing] = await Promise.all([
-      db.select().from(devices),
-      pingHost("8.8.8.8", 3),
-    ]);
+    const allDevices = await db.select().from(devices);
 
     const devicesWithLatestMetrics = await Promise.all(
       allDevices.map(async (device) => {
@@ -54,6 +51,19 @@ export async function GET() {
           .orderBy(desc(interfaceMetrics.timestamp))
           .limit(2);
 
+        let googleDnsPing = null;
+        if (device.status === "online") {
+          const mikrotik: MikroTikDevice = {
+            id: device.id,
+            name: device.name,
+            host: device.host,
+            port: device.port,
+            username: device.username,
+            encryptedPassword: device.encryptedPassword,
+          };
+          googleDnsPing = await pingFromDevice(mikrotik, "8.8.8.8", 3);
+        }
+
         return {
           id: device.id,
           name: device.name,
@@ -68,6 +78,7 @@ export async function GET() {
           firewall: latestFirewall || null,
           latency: latestLatency || null,
           prevInterfaces: prevInterfaces,
+          googleDnsPing,
         };
       })
     );
@@ -80,6 +91,10 @@ export async function GET() {
       (d) => d.status === "offline"
     ).length;
 
+    const selectedDns = devicesWithLatestMetrics.find(
+      (d) => d.status === "online" && d.googleDnsPing?.success
+    );
+
     return NextResponse.json({
       summary: {
         totalDevices,
@@ -87,7 +102,7 @@ export async function GET() {
         offlineDevices,
       },
       devices: devicesWithLatestMetrics,
-      googleDnsPing,
+      googleDnsPing: selectedDns?.googleDnsPing || null,
     });
   } catch (error) {
     return NextResponse.json(

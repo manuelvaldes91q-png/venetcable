@@ -231,6 +231,70 @@ export async function testConnection(
   }
 }
 
+export interface MikroTikPingResult {
+  rttAvg: number;
+  rttMin: number;
+  rttMax: number;
+  packetLoss: number;
+  success: boolean;
+  error?: string;
+}
+
+export async function pingFromDevice(
+  device: MikroTikDevice,
+  target: string,
+  count = 5
+): Promise<MikroTikPingResult> {
+  const conn = await connectToDevice(device);
+  try {
+    const response = await conn.write([
+      "/ping",
+      `=address=${target}`,
+      `=count=${count}`,
+    ]);
+
+    let totalTime = 0;
+    let minTime = Infinity;
+    let maxTime = 0;
+    let received = 0;
+
+    for (const entry of response) {
+      const timeStr = entry["time"] || "";
+      const ms = parseFloat(timeStr.replace("ms", ""));
+      if (!isNaN(ms)) {
+        totalTime += ms;
+        if (ms < minTime) minTime = ms;
+        if (ms > maxTime) maxTime = ms;
+        received++;
+      }
+    }
+
+    if (received === 0) {
+      return { rttAvg: 0, rttMin: 0, rttMax: 0, packetLoss: 100, success: false };
+    }
+
+    const lastEntry = response[response.length - 1];
+    const lossStr = lastEntry?.["packet-loss"] || "";
+    const packetLoss = parseFloat(lossStr.replace("%", "")) || ((count - received) / count) * 100;
+
+    return {
+      rttAvg: parseFloat((totalTime / received).toFixed(2)),
+      rttMin: parseFloat(minTime.toFixed(2)),
+      rttMax: parseFloat(maxTime.toFixed(2)),
+      packetLoss: parseFloat(packetLoss.toFixed(1)),
+      success: true,
+    };
+  } catch (error) {
+    return {
+      rttAvg: 0, rttMin: 0, rttMax: 0, packetLoss: 100,
+      success: false,
+      error: error instanceof Error ? error.message : "Ping fallido",
+    };
+  } finally {
+    await conn.close();
+  }
+}
+
 export interface DhcpLease {
   id: string;
   address: string;

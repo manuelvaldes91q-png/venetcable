@@ -10,6 +10,7 @@ import {
 import { eq, gte, desc, and } from "drizzle-orm";
 import {
   collectAllMetrics,
+  pingFromDevice,
   type MikroTikDevice,
 } from "@/lib/mikrotik";
 import { pingHost } from "@/lib/ping";
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
     const [metrics, ping, googleDnsPing] = await Promise.all([
       collectAllMetrics(mikrotikDevice),
       pingHost(device.host, 5),
-      pingHost("8.8.8.8", 3),
+      pingFromDevice(mikrotikDevice, "8.8.8.8", 3),
     ]);
 
     const now = new Date();
