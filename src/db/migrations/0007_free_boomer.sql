@@ -1,0 +1,1 @@
+ALTER TABLE `telegram_config` ADD `alert_antennas` integer DEFAULT true NOT NULL;

@@ -555,6 +555,7 @@ export async function checkAndSendAlerts() {
   }
 
   for (const ant of allAntennas) {
+    if (!config.alertAntennas) break;
     if (!ant.ip || !ant.deviceId) continue;
     const [device] = await db.select().from(devices).where(eq(devices.id, ant.deviceId));
     if (!device || device.status !== "online") continue;

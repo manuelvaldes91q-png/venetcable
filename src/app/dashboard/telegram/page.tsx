@@ -13,6 +13,7 @@ interface TelegramConfig {
   alertHighCpuThreshold: number;
   alertHighLatency: boolean;
   alertHighLatencyThreshold: number;
+  alertAntennas: boolean;
   alertIntervalMinutes: number;
 }
 
@@ -40,6 +41,7 @@ export default function TelegramPage() {
   const [alertHighCpuThreshold, setAlertHighCpuThreshold] = useState(80);
   const [alertHighLatency, setAlertHighLatency] = useState(true);
   const [alertHighLatencyThreshold, setAlertHighLatencyThreshold] = useState(150);
+  const [alertAntennas, setAlertAntennas] = useState(true);
   const [alertIntervalMinutes, setAlertIntervalMinutes] = useState(5);
 
   const [newChatId, setNewChatId] = useState("");
@@ -63,6 +65,7 @@ export default function TelegramPage() {
           setAlertHighCpuThreshold(data.config.alertHighCpuThreshold);
           setAlertHighLatency(data.config.alertHighLatency);
           setAlertHighLatencyThreshold(data.config.alertHighLatencyThreshold);
+          setAlertAntennas(data.config.alertAntennas ?? true);
           setAlertIntervalMinutes(data.config.alertIntervalMinutes);
         }
         setUsers(data.users || []);
@@ -106,6 +109,7 @@ export default function TelegramPage() {
           alertHighCpuThreshold,
           alertHighLatency,
           alertHighLatencyThreshold,
+          alertAntennas,
           alertIntervalMinutes,
         }),
       });
@@ -351,6 +355,11 @@ export default function TelegramPage() {
                     <span style={{ fontSize: "12px", color: "#d8d9da" }}>ms )</span>
                   </label>
                 </div>
+
+                <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+                  <input type="checkbox" checked={alertAntennas} onChange={(e) => setAlertAntennas(e.target.checked)} style={{ accentColor: "#3b82f6" }} />
+                  <span style={{ fontSize: "12px", color: "#d8d9da" }}>Monitoreo de antenas (down/up)</span>
+                </label>
 
                 <div>
                   <label style={{ display: "flex", alignItems: "center", gap: "8px" }}>

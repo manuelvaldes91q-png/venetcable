@@ -50,6 +50,13 @@
       "when": 1774552067219,
       "tag": "0006_third_wrecking_crew",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1774553989197,
+      "tag": "0007_free_boomer",
+      "breakpoints": true
     }
   ]
 }

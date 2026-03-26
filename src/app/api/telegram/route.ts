@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     const { action } = body;
 
     if (action === "save_config") {
-      const { botToken, enabled, alertDeviceOffline, alertHighCpu, alertHighCpuThreshold, alertHighLatency, alertHighLatencyThreshold, alertIntervalMinutes } = body;
+      const { botToken, enabled, alertDeviceOffline, alertHighCpu, alertHighCpuThreshold, alertHighLatency, alertHighLatencyThreshold, alertAntennas, alertIntervalMinutes } = body;
 
       if (!botToken) {
         return NextResponse.json({ error: "Token del bot es requerido" }, { status: 400 });
@@ -60,6 +60,7 @@ export async function POST(request: NextRequest) {
         alertHighCpuThreshold: alertHighCpuThreshold ?? 80,
         alertHighLatency: alertHighLatency ?? true,
         alertHighLatencyThreshold: alertHighLatencyThreshold ?? 150,
+        alertAntennas: alertAntennas ?? true,
         alertIntervalMinutes: alertIntervalMinutes ?? 5,
         updatedAt: new Date(),
       };

@@ -155,6 +155,7 @@ export const telegramConfig = sqliteTable("telegram_config", {
   alertHighCpuThreshold: integer("alert_high_cpu_threshold").notNull().default(80),
   alertHighLatency: integer("alert_high_latency", { mode: "boolean" }).notNull().default(true),
   alertHighLatencyThreshold: integer("alert_high_latency_threshold").notNull().default(150),
+  alertAntennas: integer("alert_antennas", { mode: "boolean" }).notNull().default(true),
   alertIntervalMinutes: integer("alert_interval_minutes").notNull().default(5),
   lastPollUpdateId: integer("last_poll_update_id").default(0),
   createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
