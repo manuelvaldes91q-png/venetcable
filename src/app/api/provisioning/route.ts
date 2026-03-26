@@ -8,6 +8,9 @@ import {
   addArpBinding,
   addSimpleQueue,
   fetchSimpleQueues,
+  fetchArpEntries,
+  toggleArp,
+  toggleQueue,
   type MikroTikDevice,
 } from "@/lib/mikrotik";
 
@@ -99,7 +102,32 @@ export async function POST(request: NextRequest) {
 
       case "list_queues": {
         const queues = await fetchSimpleQueues(mikrotik);
-        return NextResponse.json({ queues });
+        const arpEntries = await fetchArpEntries(mikrotik);
+        return NextResponse.json({ queues, arpEntries });
+      }
+
+      case "toggle_arp": {
+        const { arpId, enable } = body;
+        if (!arpId) {
+          return NextResponse.json(
+            { error: "arpId es requerido" },
+            { status: 400 }
+          );
+        }
+        const ok = await toggleArp(mikrotik, arpId, enable);
+        return NextResponse.json({ success: ok });
+      }
+
+      case "toggle_queue": {
+        const { queueId, enable } = body;
+        if (!queueId) {
+          return NextResponse.json(
+            { error: "queueId es requerido" },
+            { status: 400 }
+          );
+        }
+        const ok = await toggleQueue(mikrotik, queueId, enable);
+        return NextResponse.json({ success: ok });
       }
 
       default:

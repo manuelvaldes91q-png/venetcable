@@ -448,6 +448,82 @@ export async function fetchSimpleQueues(
   }
 }
 
+export interface ArpEntry {
+  id: string;
+  address: string;
+  macAddress: string;
+  interface: string;
+  disabled: string;
+}
+
+export async function fetchArpEntries(
+  device: MikroTikDevice
+): Promise<ArpEntry[]> {
+  const conn = await connectToDevice(device);
+  try {
+    const response = await conn.write("/ip/arp/print");
+    return response.map((arp: Record<string, string>) => ({
+      id: arp[".id"] || "",
+      address: arp["address"] || "",
+      macAddress: arp["mac-address"] || "",
+      interface: arp["interface"] || "",
+      disabled: arp["disabled"] || "false",
+    }));
+  } catch {
+    return [];
+  } finally {
+    await conn.close();
+  }
+}
+
+export async function toggleArp(
+  device: MikroTikDevice,
+  arpId: string,
+  enable: boolean
+): Promise<boolean> {
+  const conn = await connectToDevice(device);
+  try {
+    await conn.write([
+      "/ip/arp/set",
+      `=.id=${arpId}`,
+      `=disabled=${enable ? "no" : "yes"}`,
+    ]);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await conn.close();
+  }
+}
+
+export async function toggleQueue(
+  device: MikroTikDevice,
+  queueId: string,
+  enable: boolean
+): Promise<boolean> {
+  const conn = await connectToDevice(device);
+  try {
+    await conn.write([
+      "/queue/simple/set",
+      `=.id=${queueId}`,
+      `=disabled=${enable ? "no" : "yes"}`,
+    ]);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await conn.close();
+  }
+}
+
+export function parseMaxLimit(limit: string): { upload: string; download: string } {
+  const parts = limit.split("/");
+  return {
+    upload: parts[0] || "0",
+    download: parts[1] || "0",
+  };
+}
+
 export async function collectAllMetrics(device: MikroTikDevice) {
   const [system, interfaces, routing, firewall] = await Promise.allSettled([
     fetchSystemResources(device),

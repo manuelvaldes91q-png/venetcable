@@ -21,6 +21,14 @@ interface Queue {
   disabled: string;
 }
 
+interface ArpEntry {
+  id: string;
+  address: string;
+  macAddress: string;
+  interface: string;
+  disabled: string;
+}
+
 interface Device {
   id: number;
   name: string;
@@ -37,6 +45,7 @@ export default function ProvisioningPage() {
   const [loading, setLoading] = useState(true);
   const [leases, setLeases] = useState<Lease[]>([]);
   const [queues, setQueues] = useState<Queue[]>([]);
+  const [arpEntries, setArpEntries] = useState<ArpEntry[]>([]);
   const [step, setStep] = useState<Step>("idle");
   const [working, setWorking] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -99,8 +108,61 @@ export default function ProvisioningPage() {
       if (res.ok) {
         const data = await res.json();
         setQueues(data.queues);
+        setArpEntries(data.arpEntries || []);
       }
     } catch {}
+  };
+
+  const handleCortar = async (arpId: string, clientName: string) => {
+    if (!selectedDevice || !arpId) return;
+    setWorking(true);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/provisioning", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "toggle_arp", deviceId: selectedDevice, arpId, enable: false }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setMessage({ type: "success", text: `${clientName} cortado correctamente` });
+          loadQueues();
+        } else {
+          setMessage({ type: "error", text: "Error al cortar" });
+        }
+      }
+    } catch {
+      setMessage({ type: "error", text: "Error de red" });
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const handleHabilitar = async (arpId: string, clientName: string) => {
+    if (!selectedDevice || !arpId) return;
+    setWorking(true);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/provisioning", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "toggle_arp", deviceId: selectedDevice, arpId, enable: true }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setMessage({ type: "success", text: `${clientName} habilitado correctamente` });
+          loadQueues();
+        } else {
+          setMessage({ type: "error", text: "Error al habilitar" });
+        }
+      }
+    } catch {
+      setMessage({ type: "error", text: "Error de red" });
+    } finally {
+      setWorking(false);
+    }
   };
 
   useEffect(() => {
@@ -507,32 +569,87 @@ export default function ProvisioningPage() {
         {queues.length > 0 && (
           <div className="panel mt-4">
             <div className="panel-header">
-              <h3 style={{ fontSize: "13px", fontWeight: 600, color: "#d8d9da" }}>Colas de Velocidad (Simple Queues)</h3>
-              <span style={{ fontSize: "11px", color: "#5a5f6a" }}>{queues.length} colas</span>
+              <h3 style={{ fontSize: "13px", fontWeight: 600, color: "#d8d9da" }}>Clientes Aprovisionados</h3>
+              <span style={{ fontSize: "11px", color: "#5a5f6a" }}>{queues.length} clientes</span>
             </div>
             <div className="panel-body" style={{ padding: 0 }}>
               <table style={{ width: "100%", fontSize: "12px" }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid #2c3039" }}>
-                    {["Nombre", "IP", "Límite (Up/Down)", "Estado"].map((h) => (
+                    {["Nombre", "IP", "Plan (Subida)", "Plan (Bajada)", "ARP", "Acción"].map((h) => (
                       <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: "#5a5f6a", fontWeight: 600, fontSize: "11px", textTransform: "uppercase" }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {queues.map((q) => (
-                    <tr key={q.id} style={{ borderBottom: "1px solid #1e2028" }}>
-                      <td style={{ padding: "8px 16px", color: "#d8d9da", fontWeight: 500 }}>{q.name}</td>
-                      <td style={{ padding: "8px 16px", color: "#8e8e8e", fontVariantNumeric: "tabular-nums" }}>{q.target}</td>
-                      <td style={{ padding: "8px 16px", color: "#6e9fff", fontWeight: 600 }}>{q.maxLimit}</td>
-                      <td style={{ padding: "8px 16px" }}>
-                        <span className={`status-dot ${q.disabled === "true" ? "status-dot-offline" : "status-dot-online"}`} />
-                        <span style={{ marginLeft: 6, fontSize: "11px", color: q.disabled === "true" ? "#f2495c" : "#73bf69" }}>
-                          {q.disabled === "true" ? "Deshabilitada" : "Activa"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {queues.map((q) => {
+                    const parts = q.maxLimit.split("/");
+                    const uploadRaw = parts[0] || "0";
+                    const downloadRaw = parts[1] || "0";
+
+                    const formatPlan = (val: string): string => {
+                      const num = parseFloat(val);
+                      if (val.toUpperCase().includes("G")) return `${num} Gbps`;
+                      if (val.toUpperCase().includes("M") || val.toUpperCase().includes("m")) return `${num} Mbps`;
+                      if (val.toUpperCase().includes("K") || val.toUpperCase().includes("k")) return `${(num / 1000).toFixed(1)} Mbps`;
+                      if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(0)} Mbps`;
+                      if (num >= 1_000) return `${(num / 1_000).toFixed(0)} Kbps`;
+                      return `${num} bps`;
+                    };
+
+                    const ip = q.target.replace("/32", "");
+                    const matchingArp = arpEntries.find((arp) => arp.address === ip);
+                    const isArpDisabled = matchingArp?.disabled === "true";
+
+                    return (
+                      <tr key={q.id} style={{ borderBottom: "1px solid #1e2028" }}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.02)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+                      >
+                        <td style={{ padding: "8px 16px", color: "#d8d9da", fontWeight: 500 }}>{q.name}</td>
+                        <td style={{ padding: "8px 16px", color: "#8e8e8e", fontVariantNumeric: "tabular-nums" }}>{ip}</td>
+                        <td style={{ padding: "8px 16px", color: "#ff9830", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+                          {formatPlan(uploadRaw)}
+                        </td>
+                        <td style={{ padding: "8px 16px", color: "#b877d9", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+                          {formatPlan(downloadRaw)}
+                        </td>
+                        <td style={{ padding: "8px 16px" }}>
+                          {matchingArp ? (
+                            <span className={`status-dot ${isArpDisabled ? "status-dot-offline" : "status-dot-online"}`} />
+                          ) : (
+                            <span style={{ fontSize: "10px", color: "#5a5f6a" }}>—</span>
+                          )}
+                          <span style={{ marginLeft: 6, fontSize: "11px", color: isArpDisabled ? "#f2495c" : matchingArp ? "#73bf69" : "#5a5f6a" }}>
+                            {isArpDisabled ? "Cortado" : matchingArp ? "Activo" : "Sin ARP"}
+                          </span>
+                        </td>
+                        <td style={{ padding: "8px 16px" }}>
+                          {matchingArp && (
+                            isArpDisabled ? (
+                              <button
+                                onClick={() => handleHabilitar(matchingArp.id, q.name)}
+                                disabled={working}
+                                className="btn-success"
+                                style={{ padding: "3px 10px", fontSize: "10px" }}
+                              >
+                                Habilitar
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleCortar(matchingArp.id, q.name)}
+                                disabled={working}
+                                className="btn-danger"
+                                style={{ padding: "3px 10px", fontSize: "10px" }}
+                              >
+                                Cortar
+                              </button>
+                            )
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
