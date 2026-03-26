@@ -11,6 +11,8 @@ import {
   fetchArpEntries,
   toggleArp,
   toggleQueue,
+  updateQueueLimit,
+  fetchInterfaceNames,
   type MikroTikDevice,
 } from "@/lib/mikrotik";
 
@@ -106,6 +108,11 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ queues, arpEntries });
       }
 
+      case "list_interfaces": {
+        const interfaces = await fetchInterfaceNames(mikrotik);
+        return NextResponse.json({ interfaces });
+      }
+
       case "toggle_arp": {
         const { arpId, enable } = body;
         if (!arpId) {
@@ -127,6 +134,18 @@ export async function POST(request: NextRequest) {
           );
         }
         const ok = await toggleQueue(mikrotik, queueId, enable);
+        return NextResponse.json({ success: ok });
+      }
+
+      case "update_queue": {
+        const { queueId: uqId, uploadLimit: uUl, downloadLimit: uDl } = body;
+        if (!uqId || !uUl || !uDl) {
+          return NextResponse.json(
+            { error: "queueId, uploadLimit y downloadLimit son requeridos" },
+            { status: 400 }
+          );
+        }
+        const ok = await updateQueueLimit(mikrotik, uqId, uUl, uDl);
         return NextResponse.json({ success: ok });
       }
 

@@ -476,6 +476,41 @@ export async function fetchArpEntries(
   }
 }
 
+export async function updateQueueLimit(
+  device: MikroTikDevice,
+  queueId: string,
+  maxLimitUpload: string,
+  maxLimitDownload: string
+): Promise<boolean> {
+  const conn = await connectToDevice(device);
+  try {
+    await conn.write([
+      "/queue/simple/set",
+      `=.id=${queueId}`,
+      `=max-limit=${maxLimitUpload}/${maxLimitDownload}`,
+    ]);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await conn.close();
+  }
+}
+
+export async function fetchInterfaceNames(
+  device: MikroTikDevice
+): Promise<string[]> {
+  const conn = await connectToDevice(device);
+  try {
+    const response = await conn.write("/interface/print");
+    return response.map((iface: Record<string, string>) => iface["name"] || "");
+  } catch {
+    return [];
+  } finally {
+    await conn.close();
+  }
+}
+
 export async function toggleArp(
   device: MikroTikDevice,
   arpId: string,
