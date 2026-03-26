@@ -108,46 +108,55 @@ async function handleProvisionInput(botToken: string, chatId: string, text: stri
 
     let interfaces: string[] = [];
     try {
-      interfaces = await fetchInterfaceNames(session.device);
+      interfaces = await Promise.race([
+        fetchInterfaceNames(session.device),
+        new Promise<string[]>((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000)),
+      ]);
     } catch {}
 
     const ifaceList = interfaces.length > 0
-      ? `\nInterfaces disponibles: ${interfaces.join(", ")}`
+      ? `\nInterfaces: ${interfaces.join(", ")}`
       : "";
 
     await sendTelegramMessage(botToken, chatId,
       `*Paso 3/4 — Interfaz ARP*\n\n` +
       `Cliente: ${session.clientName}\n` +
       `IP: ${session.selectedLease.address}\n\n` +
-      `Escribe el nombre de la interfaz para el binding ARP:${ifaceList}\n(Ej: ether2, bridge1)`
+      `Escribe la interfaz para el binding ARP:${ifaceList}\n(Ej: ether2, bridge1)`
     );
     return true;
   }
 
   if (session.step === "enter_interface") {
     session.arpInterface = input;
-    session.step = "enter_speed";
 
     try {
-      await convertDhcpToStatic(session.device, session.selectedLease.id, session.clientName);
+      await Promise.race([
+        convertDhcpToStatic(session.device, session.selectedLease.id, session.clientName),
+        new Promise<boolean>((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000)),
+      ]);
       await sendTelegramMessage(botToken, chatId, "✅ IP fijada como estática.");
     } catch {
       await sendTelegramMessage(botToken, chatId, "⚠️ Error al fijar IP estática, continuando...");
     }
 
     try {
-      await addArpBinding(session.device, session.selectedLease.macAddress, session.selectedLease.address, session.arpInterface);
+      await Promise.race([
+        addArpBinding(session.device, session.selectedLease.macAddress, session.selectedLease.address, session.arpInterface),
+        new Promise<boolean>((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000)),
+      ]);
       await sendTelegramMessage(botToken, chatId, "✅ Binding ARP creado.");
     } catch {
       await sendTelegramMessage(botToken, chatId, "⚠️ Error al crear ARP, continuando...");
     }
 
+    session.step = "enter_speed";
     await sendTelegramMessage(botToken, chatId,
       `*Paso 4/4 — Velocidad*\n\n` +
       `Cliente: ${session.clientName}\n` +
       `IP: ${session.selectedLease.address}\n` +
       `ARP: ${session.arpInterface}\n\n` +
-      `Escribe la velocidad en formato SUBIDA/BAJADA:\n(Ej: 10M/10M, 5M/20M, 512k/2M)\n\n` +
+      `Escribe la velocidad SUBIDA/BAJADA:\n(Ej: 10M/10M, 5M/20M)\n\n` +
       `M = Mbps, K = Kbps`
     );
     return true;
@@ -164,7 +173,10 @@ async function handleProvisionInput(botToken: string, chatId: string, text: stri
     const download = speedParts[1].trim();
 
     try {
-      await addSimpleQueue(session.device, session.clientName, session.selectedLease.address, upload, download);
+      await Promise.race([
+        addSimpleQueue(session.device, session.clientName, session.selectedLease.address, upload, download),
+        new Promise<boolean>((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000)),
+      ]);
       conversationState.delete(chatId);
 
       await sendTelegramMessage(botToken, chatId,
@@ -602,7 +614,7 @@ export async function pollTelegramUpdates() {
 
     for (const update of data.result as TelegramUpdate[]) {
       if (update.message?.text) {
-        await processCommand(config.botToken, String(update.message.chat.id), update.message.text);
+        await processCommand(config.botToken, String(update.message.chat.id), update.message.text).catch(() => {});
       }
       await db
         .update(telegramConfig)
