@@ -135,6 +135,7 @@ export default function DashboardPage() {
   } | null>(null);
   const [tracerResult, setTracerResult] = useState<{ hop: number; address: string; time: string }[]>([]);
   const [diagRunning, setDiagRunning] = useState(false);
+  const [antennas, setAntennas] = useState<{ id: number; name: string; ip: string | null; location: string | null; reachable: boolean | null; pingRtt: number | null }[]>([]);
 
   const collectAndRefresh = useCallback(async (deviceId: number) => {
     setCollecting((p) => ({ ...p, [deviceId]: true }));
@@ -169,6 +170,10 @@ export default function DashboardPage() {
         if (data.devices.length > 0 && !selectedDevice) {
           setSelectedDevice(data.devices[0].id);
         }
+      }
+      const antRes = await fetch("/api/antennas");
+      if (antRes.ok) {
+        setAntennas(await antRes.json());
       }
     } catch {
     } finally {
@@ -363,6 +368,54 @@ export default function DashboardPage() {
             {sel?.googleDnsPing?.success && <p style={{ fontSize: "10px", color: "#5a5f6a" }}>ms</p>}
           </div></div>
         </div>
+
+        {antennas.length > 0 && (
+          <div className="panel mb-6">
+            <div className="panel-header">
+              <h3 style={{ fontSize: "13px", fontWeight: 600, color: "#d8d9da" }}>Estado de Antenas</h3>
+              <span style={{ fontSize: "11px", color: "#5a5f6a" }}>{antennas.length}</span>
+            </div>
+            <div className="panel-body" style={{ padding: "12px 16px" }}>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div>
+                  <p style={{ fontSize: "10px", fontWeight: 600, color: "#f2495c", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "8px" }}>
+                    🔴 Caídas ({antennas.filter((a) => a.reachable === false || (a.ip && a.reachable === null)).length})
+                  </p>
+                  {antennas.filter((a) => a.reachable === false || (a.ip && a.reachable === null)).length === 0 ? (
+                    <p style={{ fontSize: "12px", color: "#5a5f6a" }}>Todas las antenas están operativas</p>
+                  ) : (
+                    antennas.filter((a) => a.reachable === false || (a.ip && a.reachable === null)).map((a) => (
+                      <div key={a.id} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "4px 0", fontSize: "12px", color: "#d8d9da" }}>
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: "#f2495c", flexShrink: 0 }} />
+                        <span style={{ fontWeight: 600 }}>{a.name}</span>
+                        <span style={{ color: "#5a5f6a" }}>{a.ip || "sin IP"}</span>
+                        {a.location && <span style={{ color: "#5a5f6a" }}>— {a.location}</span>}
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div>
+                  <p style={{ fontSize: "10px", fontWeight: 600, color: "#73bf69", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "8px" }}>
+                    🟢 Prendidas ({antennas.filter((a) => a.reachable === true).length})
+                  </p>
+                  {antennas.filter((a) => a.reachable === true).length === 0 ? (
+                    <p style={{ fontSize: "12px", color: "#5a5f6a" }}>Ninguna antena responde</p>
+                  ) : (
+                    antennas.filter((a) => a.reachable === true).map((a) => (
+                      <div key={a.id} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "4px 0", fontSize: "12px", color: "#d8d9da" }}>
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: "#73bf69", flexShrink: 0 }} />
+                        <span style={{ fontWeight: 600 }}>{a.name}</span>
+                        <span style={{ color: "#5a5f6a" }}>{a.ip}</span>
+                        {a.pingRtt != null && <span style={{ color: "#73bf69", fontVariantNumeric: "tabular-nums" }}>{a.pingRtt}ms</span>}
+                        {a.location && <span style={{ color: "#5a5f6a" }}>— {a.location}</span>}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {devices.length === 0 ? (
           <div className="panel" style={{ textAlign: "center", padding: "48px 24px" }}>
