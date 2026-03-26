@@ -173,6 +173,17 @@ export const telegramUsers = sqliteTable("telegram_users", {
   updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
 });
 
+export const telegramAlertHistory = sqliteTable("telegram_alert_history", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  alertType: text("alert_type").notNull(),
+  targetId: integer("target_id").notNull(),
+  targetName: text("target_name").notNull(),
+  lastState: text("last_state").notNull(),
+  lastNotifiedAt: integer("last_notified_at", { mode: "timestamp" }),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+});
+
 export const users = sqliteTable("users", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   username: text("username").notNull().unique(),

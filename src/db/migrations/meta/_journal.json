@@ -43,6 +43,13 @@
       "when": 1774539066782,
       "tag": "0005_common_karnak",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1774552067219,
+      "tag": "0006_third_wrecking_crew",
+      "breakpoints": true
     }
   ]
 }
