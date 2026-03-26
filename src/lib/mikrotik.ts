@@ -239,6 +239,7 @@ export interface DhcpLease {
   status: string;
   server: string;
   expiresAfter: string;
+  dynamic: boolean;
 }
 
 export interface SimpleQueue {
@@ -263,6 +264,7 @@ export async function fetchDhcpLeases(
       status: lease["status"] || "",
       server: lease["server"] || "",
       expiresAfter: lease["expires-after"] || "",
+      dynamic: lease["dynamic"] === "true",
     }));
   } finally {
     await conn.close();
