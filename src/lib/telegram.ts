@@ -498,17 +498,21 @@ export async function checkAndSendAlerts() {
   const messages: string[] = [];
 
   for (const device of allDevices) {
-    const prevState = await getAlertState("device_status", device.id);
-    const currentState = device.status;
+    if (config.alertDeviceOffline) {
+      const prevState = await getAlertState("device_status", device.id);
+      const currentState = device.status;
 
-    if (config.alertDeviceOffline && prevState?.lastState !== currentState) {
-      if (currentState === "offline") {
-        messages.push(`🔴 *${device.name}* (${device.host}) se CAYÓ`);
-        await updateAlertState("device_status", device.id, device.name, "offline");
-      } else if (currentState === "online" && prevState?.lastState === "offline") {
-        messages.push(`🟢 *${device.name}* (${device.host}) se LEVANTÓ`);
-        await updateAlertState("device_status", device.id, device.name, "online");
-      } else {
+      if (!prevState) {
+        if (currentState === "offline") {
+          messages.push(`🔴 *${device.name}* (${device.host}) está FUERA DE LÍNEA`);
+        }
+        await updateAlertState("device_status", device.id, device.name, currentState);
+      } else if (prevState.lastState !== currentState) {
+        if (currentState === "offline") {
+          messages.push(`🔴 *${device.name}* (${device.host}) se CAYÓ`);
+        } else if (currentState === "online") {
+          messages.push(`🟢 *${device.name}* (${device.host}) se LEVANTÓ`);
+        }
         await updateAlertState("device_status", device.id, device.name, currentState);
       }
     }
@@ -559,10 +563,15 @@ export async function checkAndSendAlerts() {
     const currentState = result.success ? "up" : "down";
     const prevState = await getAlertState("antenna_status", ant.id);
 
-    if (prevState?.lastState !== currentState) {
+    if (!prevState) {
+      if (currentState === "down") {
+        messages.push(`🔴📡 *${ant.name}* (${ant.ip}) está CAÍDA`);
+      }
+      await updateAlertState("antenna_status", ant.id, ant.name, currentState);
+    } else if (prevState.lastState !== currentState) {
       if (currentState === "down") {
         messages.push(`🔴📡 *${ant.name}* (${ant.ip}) se CAYÓ`);
-      } else if (currentState === "up" && prevState?.lastState === "down") {
+      } else {
         messages.push(`🟢📡 *${ant.name}* (${ant.ip}) se LEVANTÓ — ${result.rttAvg}ms`);
       }
       await updateAlertState("antenna_status", ant.id, ant.name, currentState);
