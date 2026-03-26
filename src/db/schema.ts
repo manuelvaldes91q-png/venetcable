@@ -143,3 +143,15 @@ export const latencyMetrics = sqliteTable("latency_metrics", {
     () => new Date()
   ),
 });
+
+export const users = sqliteTable("users", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  username: text("username").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  role: text("role", { enum: ["admin", "user"] })
+    .notNull()
+    .default("user"),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
+    () => new Date()
+  ),
+});

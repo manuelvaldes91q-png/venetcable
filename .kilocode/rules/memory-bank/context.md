@@ -2,7 +2,7 @@
 
 ## Current State
 
-**Status**: Panel de monitoreo profesional estilo Grafana en español, con tráfico WAN en tiempo real, latencia, monitoreo de antenas con ping, sistema de aprovisionamiento DHCP→Static→ARP→Velocidad.
+**Status**: Panel de monitoreo con autenticación JWT, usuario admin vmanuel/vmanuel, aprovisionamiento DHCP→Static→ARP→Velocidad, herramientas de red (ping/traceroute).
 
 ## Recently Completed
 

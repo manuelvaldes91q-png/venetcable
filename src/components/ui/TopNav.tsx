@@ -1,16 +1,24 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 export function TopNav() {
   const pathname = usePathname();
+  const router = useRouter();
 
   const links = [
     { href: "/dashboard", label: "Panel Principal" },
     { href: "/dashboard/antennas", label: "Antenas" },
     { href: "/dashboard/provisioning", label: "Aprovisionamiento" },
     { href: "/dashboard/devices", label: "Dispositivos" },
+    { href: "/dashboard/users", label: "Usuarios" },
   ];
+
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+    router.refresh();
+  };
 
   return (
     <nav className="topbar">
@@ -38,6 +46,23 @@ export function TopNav() {
       </div>
       <div className="flex items-center gap-4">
         <LiveClock />
+        <button
+          onClick={handleLogout}
+          style={{
+            background: "none",
+            border: "1px solid #343841",
+            color: "#8e8e8e",
+            fontSize: "11px",
+            padding: "4px 10px",
+            borderRadius: 4,
+            cursor: "pointer",
+            transition: "all 0.15s",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = "#f2495c"; e.currentTarget.style.borderColor = "rgba(242,73,92,0.4)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = "#8e8e8e"; e.currentTarget.style.borderColor = "#343841"; }}
+        >
+          Salir
+        </button>
       </div>
     </nav>
   );
