@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { antennas, antennaReadings } from "@/db/schema";
+import { antennas, antennaReadings, devices } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
-import { pingHost } from "@/lib/ping";
+import { pingFromDevice, type MikroTikDevice } from "@/lib/mikrotik";
 
 export async function GET() {
   try {
@@ -24,10 +24,26 @@ export async function GET() {
 
         let reachable: boolean | null = null;
         let pingRtt: number | null = null;
-        if (ant.ip) {
-          const pingResult = await pingHost(ant.ip, 3);
-          reachable = pingResult.success;
-          pingRtt = pingResult.success ? pingResult.rttAvg : null;
+
+        if (ant.ip && ant.deviceId) {
+          const [device] = await db
+            .select()
+            .from(devices)
+            .where(eq(devices.id, ant.deviceId));
+
+          if (device && device.status === "online") {
+            const mikrotikDevice: MikroTikDevice = {
+              id: device.id,
+              name: device.name,
+              host: device.host,
+              port: device.port,
+              username: device.username,
+              encryptedPassword: device.encryptedPassword,
+            };
+            const pingResult = await pingFromDevice(mikrotikDevice, ant.ip, 3);
+            reachable = pingResult.success;
+            pingRtt = pingResult.success ? pingResult.rttAvg : null;
+          }
         }
 
         return {

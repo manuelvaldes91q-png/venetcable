@@ -11,16 +11,35 @@ interface Antenna {
   status: string;
   reachable: boolean | null;
   pingRtt: number | null;
+  deviceId: number | null;
+}
+
+interface Device {
+  id: number;
+  name: string;
+  host: string;
+  status: string;
 }
 
 export default function AntennasPage() {
   const [antennas, setAntennas] = useState<Antenna[]>([]);
+  const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  const [addForm, setAddForm] = useState({ name: "", ip: "", location: "" });
+  const [addForm, setAddForm] = useState({ name: "", ip: "", location: "", deviceId: "" });
+
+  const fetchDevices = useCallback(async () => {
+    try {
+      const res = await fetch("/api/devices");
+      if (res.ok) {
+        const data = await res.json();
+        setDevices(data);
+      }
+    } catch {}
+  }, []);
 
   const fetchAntennas = useCallback(async () => {
     try {
@@ -37,9 +56,10 @@ export default function AntennasPage() {
 
   useEffect(() => {
     fetchAntennas();
+    fetchDevices();
     const interval = setInterval(fetchAntennas, 60000);
     return () => clearInterval(interval);
-  }, [fetchAntennas]);
+  }, [fetchAntennas, fetchDevices]);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,11 +69,16 @@ export default function AntennasPage() {
       const res = await fetch("/api/antennas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(addForm),
+        body: JSON.stringify({
+          name: addForm.name,
+          ip: addForm.ip || undefined,
+          location: addForm.location || undefined,
+          deviceId: addForm.deviceId ? parseInt(addForm.deviceId, 10) : undefined,
+        }),
       });
       if (res.ok) {
         setMessage({ type: "success", text: "Antena agregada" });
-        setAddForm({ name: "", ip: "", location: "" });
+        setAddForm({ name: "", ip: "", location: "", deviceId: "" });
         setShowAddForm(false);
         await fetchAntennas();
       } else {
@@ -74,6 +99,12 @@ export default function AntennasPage() {
     } catch {}
   };
 
+  const getDeviceName = (deviceId: number | null) => {
+    if (!deviceId) return "—";
+    const dev = devices.find((d) => d.id === deviceId);
+    return dev ? dev.name : "—";
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#0b0c0e" }}>
@@ -85,11 +116,11 @@ export default function AntennasPage() {
   return (
     <div className="min-h-screen" style={{ backgroundColor: "#0b0c0e" }}>
       <TopNav />
-      <main style={{ maxWidth: 900, margin: "0 auto", padding: "24px" }}>
+      <main style={{ maxWidth: 1100, margin: "0 auto", padding: "24px" }}>
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 style={{ fontSize: "20px", fontWeight: 600, color: "#e0e0e0" }}>Monitoreo de Antenas</h1>
-            <p style={{ fontSize: "12px", color: "#5a5f6a" }}>Estado y latencia por ping</p>
+            <p style={{ fontSize: "12px", color: "#5a5f6a" }}>Ping desde el router MikroTik</p>
           </div>
           <button onClick={() => setShowAddForm(!showAddForm)} className="btn-primary">
             {showAddForm ? "Cancelar" : "+ Nueva Antena"}
@@ -109,14 +140,28 @@ export default function AntennasPage() {
             </div>
             <div className="panel-body">
               <form onSubmit={handleAdd}>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                   <div>
                     <label className="label-text">Nombre *</label>
                     <input type="text" required value={addForm.name} onChange={(e) => setAddForm((p) => ({ ...p, name: e.target.value }))} placeholder="Ej. Sector Norte" className="input-field" />
                   </div>
                   <div>
-                    <label className="label-text">IP</label>
+                    <label className="label-text">IP de la Antena</label>
                     <input type="text" value={addForm.ip} onChange={(e) => setAddForm((p) => ({ ...p, ip: e.target.value }))} placeholder="192.168.1.10" className="input-field" />
+                  </div>
+                  <div>
+                    <label className="label-text">Router MikroTik</label>
+                    <select value={addForm.deviceId} onChange={(e) => setAddForm((p) => ({ ...p, deviceId: e.target.value }))} className="select-field">
+                      <option value="">Sin router (solo registro)</option>
+                      {devices.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name} ({d.host}) — {d.status === "online" ? "En línea" : "Fuera de línea"}
+                        </option>
+                      ))}
+                    </select>
+                    <p style={{ fontSize: "10px", color: "#5a5f6a", marginTop: "2px" }}>
+                      El ping se ejecutará desde este router
+                    </p>
                   </div>
                   <div>
                     <label className="label-text">Ubicación</label>
@@ -145,7 +190,7 @@ export default function AntennasPage() {
               <table style={{ width: "100%", fontSize: "13px" }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid #2c3039" }}>
-                    {["Estado", "Nombre", "IP", "Ping", "Ubicación", ""].map((h) => (
+                    {["Estado", "Nombre", "IP", "Ping", "Router", "Ubicación", ""].map((h) => (
                       <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: "#5a5f6a", fontWeight: 600, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.04em" }}>{h}</th>
                     ))}
                   </tr>
@@ -173,9 +218,15 @@ export default function AntennasPage() {
                         </td>
                         <td style={{ padding: "10px 16px", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: isUp ? "#73bf69" : "#f2495c" }}>
                           {ant.ip
-                            ? (isUp && ant.pingRtt != null ? `${ant.pingRtt} ms` : isUp ? "—" : "Sin respuesta")
+                            ? (ant.deviceId
+                              ? (isUp && ant.pingRtt != null ? `${ant.pingRtt} ms` : isUp ? "—" : "Sin respuesta")
+                              : <span style={{ fontSize: "11px", color: "#ff9830", fontWeight: 500 }}>Sin router</span>
+                            )
                             : "—"
                           }
+                        </td>
+                        <td style={{ padding: "10px 16px", color: "#8e8e8e", fontSize: "12px" }}>
+                          {getDeviceName(ant.deviceId)}
                         </td>
                         <td style={{ padding: "10px 16px", color: "#5a5f6a", fontSize: "12px" }}>
                           {ant.location || "—"}
