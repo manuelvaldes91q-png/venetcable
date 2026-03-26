@@ -29,7 +29,16 @@ interface ProvisionSession {
   arpInterface: string;
 }
 
-const conversationState = new Map<string, { type: "provision"; session: ProvisionSession }>();
+interface AntennaSession {
+  step: "enter_name" | "enter_ip" | "select_device" | "enter_location";
+  name: string;
+  ip: string;
+  deviceId: number | null;
+  deviceList: typeof devices.$inferSelect[];
+  location: string;
+}
+
+const conversationState = new Map<string, { type: "provision"; session: ProvisionSession } | { type: "antenna"; session: AntennaSession }>();
 
 async function sendTelegramMessage(botToken: string, chatId: string | number, text: string) {
   try {
@@ -182,6 +191,114 @@ async function handleProvisionInput(botToken: string, chatId: string, text: stri
   return false;
 }
 
+async function handleAntennaInput(botToken: string, chatId: string, text: string) {
+  const state = conversationState.get(chatId);
+  if (!state || state.type !== "antenna") return false;
+
+  const session = state.session;
+  const input = text.trim();
+
+  if (input.toLowerCase() === "/cancel") {
+    conversationState.delete(chatId);
+    await sendTelegramMessage(botToken, chatId, "❌ Agregar antena cancelado.");
+    return true;
+  }
+
+  if (session.step === "enter_name") {
+    session.name = input;
+    session.step = "enter_ip";
+    await sendTelegramMessage(botToken, chatId,
+      `*Paso 2/4 — IP de la antena*\n\n` +
+      `Nombre: ${session.name}\n\n` +
+      `Escribe la IP de la antena:\n(Ej: 192.168.1.10)`
+    );
+    return true;
+  }
+
+  if (session.step === "enter_ip") {
+    session.ip = input;
+    session.step = "select_device";
+
+    const allDevices = await db.select().from(devices);
+    session.deviceList = allDevices;
+
+    if (allDevices.length === 0) {
+      session.deviceId = null;
+      session.step = "enter_location";
+      await sendTelegramMessage(botToken, chatId,
+        `*Paso 4/4 — Ubicación*\n\n` +
+        `No hay routers configurados. La antena se guardará sin ping.\n\n` +
+        `Escribe la ubicación (o escribe "no" para omitir):`
+      );
+      return true;
+    }
+
+    const lines = allDevices.map((d, i) => {
+      const icon = d.status === "online" ? "🟢" : "🔴";
+      return `${i + 1}. ${icon} ${d.name} (${d.host})`;
+    });
+
+    await sendTelegramMessage(botToken, chatId,
+      `*Paso 3/4 — Router MikroTik*\n\n` +
+      `Nombre: ${session.name}\nIP: ${session.ip}\n\n` +
+      `Selecciona el router que hará el ping:\n\n${lines.join("\n")}\n\n` +
+      `Escribe el número, o "no" para omitir:`
+    );
+    return true;
+  }
+
+  if (session.step === "select_device") {
+    if (input.toLowerCase() === "no") {
+      session.deviceId = null;
+    } else {
+      const num = parseInt(input, 10);
+      if (isNaN(num) || num < 1 || num > session.deviceList.length) {
+        await sendTelegramMessage(botToken, chatId, `Número inválido. Escribe 1-${session.deviceList.length} o "no" para omitir.`);
+        return true;
+      }
+      session.deviceId = session.deviceList[num - 1].id;
+    }
+
+    session.step = "enter_location";
+    await sendTelegramMessage(botToken, chatId,
+      `*Paso 4/4 — Ubicación*\n\n` +
+      `Nombre: ${session.name}\nIP: ${session.ip}\n` +
+      `Router: ${session.deviceId ? session.deviceList.find(d => d.id === session.deviceId)?.name : "ninguno"}\n\n` +
+      `Escribe la ubicación (o escribe "no" para omitir):`
+    );
+    return true;
+  }
+
+  if (session.step === "enter_location") {
+    session.location = input.toLowerCase() === "no" ? "" : input;
+
+    const [newAntenna] = await db.insert(antennas).values({
+      name: session.name,
+      ip: session.ip || null,
+      deviceId: session.deviceId,
+      location: session.location || null,
+    }).returning();
+
+    conversationState.delete(chatId);
+
+    const deviceName = session.deviceId
+      ? session.deviceList.find(d => d.id === session.deviceId)?.name || "desconocido"
+      : "ninguno";
+
+    await sendTelegramMessage(botToken, chatId,
+      `✅ *Antena agregada*\n\n` +
+      `📡 Nombre: ${newAntenna.name}\n` +
+      `🌐 IP: ${newAntenna.ip || "sin IP"}\n` +
+      `🔧 Router: ${deviceName}\n` +
+      `📍 Ubicación: ${newAntenna.location || "sin ubicación"}\n\n` +
+      `La antena está siendo monitoreada.`
+    );
+    return true;
+  }
+
+  return false;
+}
+
 async function processCommand(botToken: string, chatId: string, text: string) {
   const [registeredUser] = await db
     .select().from(telegramUsers)
@@ -192,8 +309,11 @@ async function processCommand(botToken: string, chatId: string, text: string) {
     return;
   }
 
-  const isConversation = await handleProvisionInput(botToken, chatId, text);
-  if (isConversation) return;
+  const isProvision = await handleProvisionInput(botToken, chatId, text);
+  if (isProvision) return;
+
+  const isAntenna = await handleAntennaInput(botToken, chatId, text);
+  if (isAntenna) return;
 
   const command = text.trim().toLowerCase();
 
@@ -205,14 +325,17 @@ async function processCommand(botToken: string, chatId: string, text: string) {
 /devices — Lista de dispositivos
 /cpu — Carga de CPU
 /latency — Latencia y pérdida
+
+*Antenas:*
 /antenas — Estado de antenas
+/addantena — Agregar antena al monitoreo
 
 *Aprovisionamiento:*
 /leases — Ver leases DHCP
 /provision — Aprovisionar cliente paso a paso
 /queues — Ver colas de velocidad
 
-/cancel — Cancelar aprovisionamiento
+/cancel — Cancelar operación en curso
 /help — Mostrar esta ayuda`;
     await sendTelegramMessage(botToken, chatId, help);
     return;
@@ -334,6 +457,27 @@ async function processCommand(botToken: string, chatId: string, text: string) {
     }
 
     await sendTelegramMessage(botToken, chatId, `📡 *Estado de Antenas*\n\n${lines.join("\n")}`);
+    return;
+  }
+
+  if (command === "/addantena") {
+    const allDevices = await db.select().from(devices);
+
+    conversationState.set(chatId, {
+      type: "antenna",
+      session: {
+        step: "enter_name",
+        name: "",
+        ip: "",
+        deviceId: null,
+        deviceList: allDevices,
+        location: "",
+      },
+    });
+
+    await sendTelegramMessage(botToken, chatId,
+      `*Agregar Antena — Paso 1/4*\n\nEscribe el nombre de la antena:\n(Ej: Sector Norte, Torre A)`
+    );
     return;
   }
 
