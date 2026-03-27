@@ -373,7 +373,6 @@ export async function convertDhcpToStatic(
       `=.id=${leaseId}`,
       "=disabled=no",
       `=comment=${name}`,
-      "=server=all",
     ]);
     return true;
   } catch {
