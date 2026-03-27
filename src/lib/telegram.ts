@@ -139,7 +139,7 @@ async function handleProvisionInput(botToken: string, chatId: string, text: stri
       .then(() => sendTelegramMessage(botToken, chatId, "✅ IP fijada como estática."))
       .catch(() => sendTelegramMessage(botToken, chatId, "⚠️ No se pudo fijar IP estática."));
 
-    addArpBinding(session.device, session.selectedLease.macAddress, session.selectedLease.address, session.arpInterface)
+    addArpBinding(session.device, session.selectedLease.macAddress, session.selectedLease.address, session.arpInterface, session.clientName)
       .then(() => sendTelegramMessage(botToken, chatId, "✅ Binding ARP creado."))
       .catch(() => sendTelegramMessage(botToken, chatId, "⚠️ No se pudo crear ARP."));
 

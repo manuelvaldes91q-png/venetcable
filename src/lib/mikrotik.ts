@@ -369,9 +369,12 @@ export async function convertDhcpToStatic(
   const conn = await connectToDevice(device);
   try {
     await conn.write([
+      "/ip/dhcp-server/lease/make-static",
+      `=.id=${leaseId}`,
+    ]);
+    await conn.write([
       "/ip/dhcp-server/lease/set",
       `=.id=${leaseId}`,
-      "=disabled=no",
       `=comment=${name}`,
     ]);
     return true;
@@ -386,16 +389,21 @@ export async function addArpBinding(
   device: MikroTikDevice,
   macAddress: string,
   ipAddress: string,
-  interfaceName: string
+  interfaceName: string,
+  comment?: string
 ): Promise<boolean> {
   const conn = await connectToDevice(device);
   try {
-    await conn.write([
+    const params = [
       "/ip/arp/add",
       `=mac-address=${macAddress}`,
       `=address=${ipAddress}`,
       `=interface=${interfaceName}`,
-    ]);
+    ];
+    if (comment) {
+      params.push(`=comment=${comment}`);
+    }
+    await conn.write(params);
     return true;
   } catch {
     return false;

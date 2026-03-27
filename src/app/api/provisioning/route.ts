@@ -73,14 +73,14 @@ export async function POST(request: NextRequest) {
       }
 
       case "add_arp": {
-        const { macAddress, ipAddress, interfaceName } = body;
+        const { macAddress, ipAddress, interfaceName, comment } = body;
         if (!macAddress || !ipAddress || !interfaceName) {
           return NextResponse.json(
             { error: "macAddress, ipAddress e interfaceName son requeridos" },
             { status: 400 }
           );
         }
-        const ok = await addArpBinding(mikrotik, macAddress, ipAddress, interfaceName);
+        const ok = await addArpBinding(mikrotik, macAddress, ipAddress, interfaceName, comment);
         return NextResponse.json({ success: ok });
       }
 
