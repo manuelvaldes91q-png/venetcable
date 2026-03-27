@@ -6,7 +6,7 @@ const KEY = new TextEncoder().encode(
   process.env.JWT_SECRET || "mikrotik-monitor-jwt-secret-change-in-production"
 );
 
-const publicPaths = ["/login", "/api/auth/login", "/api/auth/seed", "/favicon.ico"];
+const publicPaths = ["/login", "/setup", "/api/auth/login", "/api/auth/setup", "/api/auth/seed", "/favicon.ico"];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

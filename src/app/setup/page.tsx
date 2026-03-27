@@ -3,31 +3,39 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-export default function LoginPage() {
+export default function SetupPage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [checking, setChecking] = useState(true);
 
   useEffect(() => {
     fetch("/api/auth/setup")
       .then((res) => res.json())
       .then((data) => {
-        if (!data.hasUsers) {
-          router.push("/setup");
+        if (data.hasUsers) {
+          router.push("/login");
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setChecking(false));
   }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError("");
 
+    if (password !== confirmPassword) {
+      setError("Las contraseñas no coinciden");
+      return;
+    }
+
+    setLoading(true);
     try {
-      const res = await fetch("/api/auth/login", {
+      const res = await fetch("/api/auth/setup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
@@ -38,7 +46,7 @@ export default function LoginPage() {
         router.refresh();
       } else {
         const data = await res.json();
-        setError(data.error || "Error de autenticación");
+        setError(data.error || "Error al crear cuenta");
       }
     } catch {
       setError("Error de conexión");
@@ -46,6 +54,14 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
+
+  if (checking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#0b0c0e" }}>
+        <div style={{ color: "#5a5f6a", fontSize: "13px" }}>Verificando...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#0b0c0e" }}>
@@ -57,10 +73,10 @@ export default function LoginPage() {
                 <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
               </svg>
               <h1 style={{ fontSize: "18px", fontWeight: 600, color: "#e0e0e0" }}>
-                MikroTik Monitor
+                Configuración Inicial
               </h1>
               <p style={{ fontSize: "12px", color: "#5a5f6a", marginTop: "4px" }}>
-                Ingrese sus credenciales para acceder
+                Cree su cuenta de administrador
               </p>
             </div>
 
@@ -78,19 +94,32 @@ export default function LoginPage() {
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Ingrese su usuario"
+                  placeholder="admin"
                   className="input-field"
                   autoFocus
+                  minLength={3}
                 />
               </div>
-              <div style={{ marginBottom: "20px" }}>
+              <div style={{ marginBottom: "16px" }}>
                 <label className="label-text">Contraseña</label>
                 <input
                   type="password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Ingrese su contraseña"
+                  placeholder="Mínimo 4 caracteres"
+                  className="input-field"
+                  minLength={4}
+                />
+              </div>
+              <div style={{ marginBottom: "20px" }}>
+                <label className="label-text">Confirmar Contraseña</label>
+                <input
+                  type="password"
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Repita la contraseña"
                   className="input-field"
                 />
               </div>
@@ -100,7 +129,7 @@ export default function LoginPage() {
                 className="btn-primary"
                 style={{ width: "100%", padding: "8px", fontSize: "13px" }}
               >
-                {loading ? "Ingresando..." : "Iniciar Sesión"}
+                {loading ? "Creando..." : "Crear Administrador"}
               </button>
             </form>
           </div>
