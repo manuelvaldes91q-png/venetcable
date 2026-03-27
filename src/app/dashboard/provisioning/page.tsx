@@ -66,6 +66,7 @@ export default function ProvisioningPage() {
   const [selectedDevice, setSelectedDevice] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [leases, setLeases] = useState<Lease[]>([]);
+  const [allLeases, setAllLeases] = useState<Lease[]>([]);
   const [queues, setQueues] = useState<Queue[]>([]);
   const [arpEntries, setArpEntries] = useState<ArpEntry[]>([]);
   const [interfaces, setInterfaces] = useState<string[]>([]);
@@ -134,6 +135,7 @@ export default function ProvisioningPage() {
         const data = await res.json();
         setQueues(data.queues);
         setArpEntries(data.arpEntries || []);
+        setAllLeases(data.leases || []);
       }
     } catch {}
   };
@@ -190,6 +192,7 @@ export default function ProvisioningPage() {
     if (!selectedDevice) return;
     const ip = queue.target.replace("/32", "");
     const matchingArp = arpEntries.find((arp) => arp.address === ip);
+    const matchingLease = allLeases.find((l) => l.address === ip);
 
     if (!confirm(`¿Eliminar a "${queue.name}" (${ip}) del sistema?\n\nSe eliminarán:\n• ARP\n• Cola\n• Lease DHCP`)) return;
 
@@ -204,6 +207,7 @@ export default function ProvisioningPage() {
           deviceId: selectedDevice,
           arpId: matchingArp?.id,
           queueId: queue.id,
+          leaseId: matchingLease?.id,
           clientName: queue.name,
         }),
       });

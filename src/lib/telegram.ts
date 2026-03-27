@@ -596,46 +596,60 @@ export async function pollTelegramUpdates() {
 
     for (const update of data.result as TelegramUpdate[]) {
       if (update.message?.text) {
-        await processCommand(config.botToken, String(update.message.chat.id), update.message.text).catch(() => {});
+        try {
+          await processCommand(config.botToken, String(update.message.chat.id), update.message.text);
+        } catch (e) {
+          console.error("Telegram command error:", e);
+          await sendTelegramMessage(config.botToken, String(update.message.chat.id), "⚠️ Error procesando el comando. Intenta de nuevo.");
+        }
       }
       await db
         .update(telegramConfig)
         .set({ lastPollUpdateId: update.update_id })
         .where(eq(telegramConfig.id, config.id));
     }
-  } catch {}
-}
-
-async function getAlertState(alertType: string, targetId: number) {
-  const [existing] = await db
-    .select().from(telegramAlertHistory)
-    .where(and(
-      eq(telegramAlertHistory.alertType, alertType),
-      eq(telegramAlertHistory.targetId, targetId)
-    ));
-  return existing || null;
-}
-
-async function updateAlertState(alertType: string, targetId: number, targetName: string, state: string) {
-  const existing = await getAlertState(alertType, targetId);
-  if (existing) {
-    await db.update(telegramAlertHistory)
-      .set({ lastState: state, lastNotifiedAt: new Date(), updatedAt: new Date() })
-      .where(eq(telegramAlertHistory.id, existing.id));
-  } else {
-    await db.insert(telegramAlertHistory).values({
-      alertType, targetId, targetName, lastState: state, lastNotifiedAt: new Date(),
-    });
+  } catch (e) {
+    console.error("Telegram poll error:", e);
   }
 }
 
-export async function checkAndSendAlerts() {
-  const [config] = await db.select().from(telegramConfig).limit(1);
-  if (!config || !config.enabled) return;
+async function getAlertState(alertType: string, targetId: number) {
+  try {
+    const [existing] = await db
+      .select().from(telegramAlertHistory)
+      .where(and(
+        eq(telegramAlertHistory.alertType, alertType),
+        eq(telegramAlertHistory.targetId, targetId)
+      ));
+    return existing || null;
+  } catch {
+    return null;
+  }
+}
 
-  const allDevices = await db.select().from(devices);
-  const allAntennas = await db.select().from(antennas);
-  const messages: string[] = [];
+async function updateAlertState(alertType: string, targetId: number, targetName: string, state: string) {
+  try {
+    const existing = await getAlertState(alertType, targetId);
+    if (existing) {
+      await db.update(telegramAlertHistory)
+        .set({ lastState: state, lastNotifiedAt: new Date(), updatedAt: new Date() })
+        .where(eq(telegramAlertHistory.id, existing.id));
+    } else {
+      await db.insert(telegramAlertHistory).values({
+        alertType, targetId, targetName, lastState: state, lastNotifiedAt: new Date(),
+      });
+    }
+  } catch {}
+}
+
+export async function checkAndSendAlerts() {
+  try {
+    const [config] = await db.select().from(telegramConfig).limit(1);
+    if (!config || !config.enabled) return;
+
+    const allDevices = await db.select().from(devices);
+    const allAntennas = await db.select().from(antennas);
+    const messages: string[] = [];
 
   for (const device of allDevices) {
     if (config.alertDeviceOffline) {
@@ -721,5 +735,8 @@ export async function checkAndSendAlerts() {
 
   if (messages.length > 0) {
     await broadcastToActiveUsers(config.botToken, `⚠️ *Alertas*\n\n${messages.join("\n")}`);
+  }
+  } catch (e) {
+    console.error("checkAndSendAlerts error:", e);
   }
 }

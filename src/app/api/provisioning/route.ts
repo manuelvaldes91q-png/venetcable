@@ -108,7 +108,8 @@ export async function POST(request: NextRequest) {
       case "list_queues": {
         const queues = await fetchSimpleQueues(mikrotik);
         const arpEntries = await fetchArpEntries(mikrotik);
-        return NextResponse.json({ queues, arpEntries });
+        const allLeases = await fetchDhcpLeases(mikrotik);
+        return NextResponse.json({ queues, arpEntries, leases: allLeases });
       }
 
       case "list_interfaces": {
