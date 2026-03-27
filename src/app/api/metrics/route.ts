@@ -113,7 +113,9 @@ export async function POST(request: NextRequest) {
     try {
       await pollTelegramUpdates();
       await checkAndSendAlerts();
-    } catch {}
+    } catch (e) {
+      console.error("Telegram integration error:", e);
+    }
 
     return NextResponse.json({ success: true, metrics, ping, googleDnsPing });
   } catch (error) {
@@ -127,7 +129,9 @@ export async function POST(request: NextRequest) {
     try {
       await pollTelegramUpdates();
       await checkAndSendAlerts();
-    } catch {}
+    } catch (e) {
+      console.error("Telegram integration error:", e);
+    }
 
     return NextResponse.json(
       {

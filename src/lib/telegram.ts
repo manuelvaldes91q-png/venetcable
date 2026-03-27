@@ -42,12 +42,21 @@ const conversationState = new Map<string, { type: "provision"; session: Provisio
 
 async function sendTelegramMessage(botToken: string, chatId: string | number, text: string) {
   try {
-    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chat_id: chatId, text, parse_mode: "Markdown" }),
     });
-  } catch {}
+    if (!res.ok) {
+      await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, text }),
+      });
+    }
+  } catch (e) {
+    console.error("Telegram send error:", e);
+  }
 }
 
 function toMikroTikDevice(device: typeof devices.$inferSelect): MikroTikDevice {
@@ -579,20 +588,27 @@ async function processCommand(botToken: string, chatId: string, text: string) {
 }
 
 export async function pollTelegramUpdates() {
-  const [config] = await db.select().from(telegramConfig).limit(1);
-  if (!config || !config.enabled) return;
-
-  const offset = (config.lastPollUpdateId || 0) + 1;
-
   try {
+    const [config] = await db.select().from(telegramConfig).limit(1);
+    if (!config || !config.enabled) return;
+
+    const offset = (config.lastPollUpdateId || 0) + 1;
+
     const res = await fetch(
       `https://api.telegram.org/bot${config.botToken}/getUpdates?offset=${offset}&timeout=1`,
       { signal: AbortSignal.timeout(10000) }
     );
-    if (!res.ok) return;
+    if (!res.ok) {
+      console.error("Telegram getUpdates failed:", res.status);
+      return;
+    }
 
     const data = await res.json();
-    if (!data.ok || !data.result) return;
+    if (!data.ok) {
+      console.error("Telegram getUpdates error:", data.description);
+      return;
+    }
+    if (!data.result || data.result.length === 0) return;
 
     for (const update of data.result as TelegramUpdate[]) {
       if (update.message?.text) {
