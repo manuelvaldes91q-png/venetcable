@@ -2,10 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { verifyPassword, createSession } from "@/lib/auth";
+import { verifyPassword, createSession, hashPassword } from "@/lib/auth";
+
+async function ensureTables() {
+  try {
+    const { runMigrations } = await import("@kilocode/app-builder-db");
+    await runMigrations(db, {}, { migrationsFolder: "./src/db/migrations" });
+  } catch (e) {
+    console.error("Migration error:", e);
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
+    await ensureTables();
+
     const body = await request.json();
     const { username, password } = body;
 
@@ -16,12 +27,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const [user] = await db
+    let [user] = await db
       .select()
       .from(users)
       .where(eq(users.username, username));
 
-    if (!user || !verifyPassword(password, user.passwordHash)) {
+    if (!user) {
+      const allUsers = await db.select().from(users);
+      if (allUsers.length === 0) {
+        const passwordHash = hashPassword(password);
+        const [newUser] = await db
+          .insert(users)
+          .values({ username, passwordHash, role: "admin" })
+          .returning();
+        await createSession(newUser.id, newUser.username, newUser.role);
+        return NextResponse.json({
+          success: true,
+          message: "Admin creado e iniciado sesión",
+          user: { id: newUser.id, username: newUser.username, role: newUser.role },
+        });
+      }
+      return NextResponse.json(
+        { error: "Credenciales inválidas" },
+        { status: 401 }
+      );
+    }
+
+    if (!verifyPassword(password, user.passwordHash)) {
       return NextResponse.json(
         { error: "Credenciales inválidas" },
         { status: 401 }
