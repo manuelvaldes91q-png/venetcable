@@ -129,28 +129,20 @@ async function handleProvisionInput(botToken: string, chatId: string, text: stri
 
   if (session.step === "enter_interface") {
     session.arpInterface = input;
-
-    try {
-      await Promise.race([
-        convertDhcpToStatic(session.device, session.selectedLease.id, session.clientName),
-        new Promise<boolean>((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000)),
-      ]);
-      await sendTelegramMessage(botToken, chatId, "✅ IP fijada como estática.");
-    } catch {
-      await sendTelegramMessage(botToken, chatId, "⚠️ Error al fijar IP estática, continuando...");
-    }
-
-    try {
-      await Promise.race([
-        addArpBinding(session.device, session.selectedLease.macAddress, session.selectedLease.address, session.arpInterface),
-        new Promise<boolean>((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000)),
-      ]);
-      await sendTelegramMessage(botToken, chatId, "✅ Binding ARP creado.");
-    } catch {
-      await sendTelegramMessage(botToken, chatId, "⚠️ Error al crear ARP, continuando...");
-    }
-
     session.step = "enter_speed";
+
+    await sendTelegramMessage(botToken, chatId,
+      `🔄 Fijando IP y creando ARP en segundo plano...`
+    );
+
+    convertDhcpToStatic(session.device, session.selectedLease.id, session.clientName)
+      .then(() => sendTelegramMessage(botToken, chatId, "✅ IP fijada como estática."))
+      .catch(() => sendTelegramMessage(botToken, chatId, "⚠️ No se pudo fijar IP estática."));
+
+    addArpBinding(session.device, session.selectedLease.macAddress, session.selectedLease.address, session.arpInterface)
+      .then(() => sendTelegramMessage(botToken, chatId, "✅ Binding ARP creado."))
+      .catch(() => sendTelegramMessage(botToken, chatId, "⚠️ No se pudo crear ARP."));
+
     await sendTelegramMessage(botToken, chatId,
       `*Paso 4/4 — Velocidad*\n\n` +
       `Cliente: ${session.clientName}\n` +
@@ -172,31 +164,21 @@ async function handleProvisionInput(botToken: string, chatId: string, text: stri
     const upload = speedParts[0].trim();
     const download = speedParts[1].trim();
 
-    try {
-      await Promise.race([
-        addSimpleQueue(session.device, session.clientName, session.selectedLease.address, upload, download),
-        new Promise<boolean>((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000)),
-      ]);
-      conversationState.delete(chatId);
+    conversationState.delete(chatId);
 
-      await sendTelegramMessage(botToken, chatId,
-        `✅ *Aprovisionamiento completo*\n\n` +
-        `👤 Cliente: ${session.clientName}\n` +
-        `🌐 IP: ${session.selectedLease.address}\n` +
-        `🔗 MAC: ${session.selectedLease.macAddress}\n` +
-        `📡 Interfaz: ${session.arpInterface}\n` +
-        `⚡ Velocidad: ${upload}↑ / ${download}↓\n\n` +
-        `El cliente está listo.`
-      );
-    } catch (err) {
-      conversationState.delete(chatId);
-      await sendTelegramMessage(botToken, chatId,
-        `⚠️ *Parcialmente completado*\n\n` +
-        `IP estática y ARP creados, pero falló la cola de velocidad.\n` +
-        `Configura la cola manualmente en el router.\n\n` +
-        `Cliente: ${session.clientName}\nIP: ${session.selectedLease.address}\nVelocidad: ${upload}/${download}`
-      );
-    }
+    addSimpleQueue(session.device, session.clientName, session.selectedLease.address, upload, download)
+      .then(() => sendTelegramMessage(botToken, chatId, "✅ Cola de velocidad creada."))
+      .catch(() => sendTelegramMessage(botToken, chatId, "⚠️ No se pudo crear la cola. Configurar manualmente."));
+
+    await sendTelegramMessage(botToken, chatId,
+      `✅ *Aprovisionamiento enviado*\n\n` +
+      `👤 Cliente: ${session.clientName}\n` +
+      `🌐 IP: ${session.selectedLease.address}\n` +
+      `🔗 MAC: ${session.selectedLease.macAddress}\n` +
+      `📡 Interfaz: ${session.arpInterface}\n` +
+      `⚡ Velocidad: ${upload}↑ / ${download}↓\n\n` +
+      `Las acciones se están ejecutando en el router.`
+    );
     return true;
   }
 
