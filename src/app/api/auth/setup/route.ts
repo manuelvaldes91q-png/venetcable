@@ -3,17 +3,30 @@ import { db } from "@/db";
 import { users } from "@/db/schema";
 import { hashPassword, createSession } from "@/lib/auth";
 
+async function ensureTablesExist() {
+  try {
+    const { runMigrations } = await import("@kilocode/app-builder-db");
+    await runMigrations(db, {}, { migrationsFolder: "./src/db/migrations" });
+  } catch (e) {
+    console.error("Migration error:", e);
+  }
+}
+
 export async function GET() {
   try {
+    await ensureTablesExist();
     const allUsers = await db.select().from(users);
     return NextResponse.json({ hasUsers: allUsers.length > 0 });
-  } catch {
+  } catch (e) {
+    console.error("Setup GET error:", e);
     return NextResponse.json({ hasUsers: false });
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
+    await ensureTablesExist();
+
     const allUsers = await db.select().from(users);
     if (allUsers.length > 0) {
       return NextResponse.json(
@@ -59,8 +72,9 @@ export async function POST(request: NextRequest) {
       user: { id: newUser.id, username: newUser.username, role: newUser.role },
     });
   } catch (error) {
+    console.error("Setup POST error:", error);
     return NextResponse.json(
-      { error: "Error al crear administrador" },
+      { error: `Error: ${error instanceof Error ? error.message : "desconocido"}` },
       { status: 500 }
     );
   }

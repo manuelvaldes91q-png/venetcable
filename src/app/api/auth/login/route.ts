@@ -34,7 +34,8 @@ export async function POST(request: NextRequest) {
       success: true,
       user: { id: user.id, username: user.username, role: user.role },
     });
-  } catch {
+  } catch (error) {
+    console.error("Login error:", error);
     return NextResponse.json(
       { error: "Error en el inicio de sesión" },
       { status: 500 }
