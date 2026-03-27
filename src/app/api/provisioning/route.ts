@@ -13,6 +13,9 @@ import {
   toggleQueue,
   updateQueueLimit,
   fetchInterfaceNames,
+  deleteArpEntry,
+  deleteDhcpLease,
+  deleteSimpleQueue,
   type MikroTikDevice,
 } from "@/lib/mikrotik";
 
@@ -147,6 +150,24 @@ export async function POST(request: NextRequest) {
         }
         const ok = await updateQueueLimit(mikrotik, uqId, uUl, uDl);
         return NextResponse.json({ success: ok });
+      }
+
+      case "delete_client": {
+        const { arpId: dArpId, leaseId: dLeaseId, queueId: dQueueId, clientName: dName } = body;
+        const results: { arp: boolean; lease: boolean; queue: boolean } = { arp: false, lease: false, queue: false };
+
+        if (dArpId) {
+          results.arp = await deleteArpEntry(mikrotik, dArpId);
+        }
+        if (dLeaseId) {
+          results.lease = await deleteDhcpLease(mikrotik, dLeaseId);
+        }
+        if (dQueueId) {
+          results.queue = await deleteSimpleQueue(mikrotik, dQueueId);
+        }
+
+        const allOk = (!dArpId || results.arp) && (!dLeaseId || results.lease) && (!dQueueId || results.queue);
+        return NextResponse.json({ success: allOk, results, clientName: dName || "Cliente" });
       }
 
       default:

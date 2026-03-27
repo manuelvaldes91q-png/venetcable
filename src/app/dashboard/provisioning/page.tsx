@@ -186,6 +186,41 @@ export default function ProvisioningPage() {
     finally { setWorking(false); }
   };
 
+  const handleDeleteClient = async (queue: Queue) => {
+    if (!selectedDevice) return;
+    const ip = queue.target.replace("/32", "");
+    const matchingArp = arpEntries.find((arp) => arp.address === ip);
+
+    if (!confirm(`¿Eliminar a "${queue.name}" (${ip}) del sistema?\n\nSe eliminarán:\n• ARP\n• Cola\n• Lease DHCP`)) return;
+
+    setWorking(true);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/provisioning", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "delete_client",
+          deviceId: selectedDevice,
+          arpId: matchingArp?.id,
+          queueId: queue.id,
+          clientName: queue.name,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setMessage({ type: "success", text: `${queue.name} eliminado completamente` });
+        } else {
+          setMessage({ type: "error", text: `Eliminación parcial: ${JSON.stringify(data.results)}` });
+        }
+        loadLeases();
+        loadQueues();
+      }
+    } catch { setMessage({ type: "error", text: "Error al eliminar" }); }
+    finally { setWorking(false); }
+  };
+
   const handleUpdateSpeed = async () => {
     if (!selectedDevice || !editingQueue) return;
     const up = customUpload || editUpload;
@@ -537,6 +572,9 @@ export default function ProvisioningPage() {
                               setCustomDownload("");
                             }} className="btn-secondary" style={{ padding: "3px 8px", fontSize: "10px" }}>
                               {isEditing ? "Cerrar" : "Modificar"}
+                            </button>
+                            <button onClick={() => handleDeleteClient(q)} disabled={working} className="btn-danger" style={{ padding: "3px 8px", fontSize: "10px" }}>
+                              Eliminar
                             </button>
                           </div>
                         </td>

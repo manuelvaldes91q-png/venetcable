@@ -586,3 +586,48 @@ export async function collectAllMetrics(device: MikroTikDevice) {
     ospf,
   };
 }
+
+export async function deleteArpEntry(
+  device: MikroTikDevice,
+  arpId: string
+): Promise<boolean> {
+  const conn = await connectToDevice(device);
+  try {
+    await conn.write(["/ip/arp/remove", `=.id=${arpId}`]);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await conn.close();
+  }
+}
+
+export async function deleteDhcpLease(
+  device: MikroTikDevice,
+  leaseId: string
+): Promise<boolean> {
+  const conn = await connectToDevice(device);
+  try {
+    await conn.write(["/ip/dhcp-server/lease/remove", `=.id=${leaseId}`]);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await conn.close();
+  }
+}
+
+export async function deleteSimpleQueue(
+  device: MikroTikDevice,
+  queueId: string
+): Promise<boolean> {
+  const conn = await connectToDevice(device);
+  try {
+    await conn.write(["/queue/simple/remove", `=.id=${queueId}`]);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await conn.close();
+  }
+}
