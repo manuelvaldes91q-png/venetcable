@@ -1,4 +1,4 @@
-import { runMigrations } from "@kilocode/app-builder-db";
-import { db } from "./index";
+import { getDb } from "./index";
 
-await runMigrations(db, {}, { migrationsFolder: "./src/db/migrations" });
+getDb();
+console.log("Migrations applied automatically via better-sqlite3");

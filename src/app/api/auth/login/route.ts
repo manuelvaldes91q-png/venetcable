@@ -4,19 +4,8 @@ import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { verifyPassword, createSession, hashPassword } from "@/lib/auth";
 
-async function ensureTables() {
-  try {
-    const { runMigrations } = await import("@kilocode/app-builder-db");
-    await runMigrations(db, {}, { migrationsFolder: "./src/db/migrations" });
-  } catch (e) {
-    console.error("Migration error:", e);
-  }
-}
-
 export async function POST(request: NextRequest) {
   try {
-    await ensureTables();
-
     const body = await request.json();
     const { username, password } = body;
 
