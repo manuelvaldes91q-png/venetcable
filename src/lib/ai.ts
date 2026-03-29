@@ -30,7 +30,7 @@ export async function analyzeWithAI(
         "HTTP-Referer": "https://mikrotik-monitor.local",
       },
       body: JSON.stringify({
-        model: "openai/gpt-4o-mini",
+        model: "google/gemma-2-9b-it:free",
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: userMessage },
