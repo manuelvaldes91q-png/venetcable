@@ -11,10 +11,11 @@ export async function POST() {
     }
 
     await pollTelegramUpdates();
-    await checkAndSendAlerts();
+    await checkAndSendAlerts().catch((e) => console.error("Alert error:", e));
 
     return NextResponse.json({ success: true });
-  } catch {
+  } catch (e) {
+    console.error("Telegram poll error:", e);
     return NextResponse.json({ error: "Error en polling" }, { status: 500 });
   }
 }
