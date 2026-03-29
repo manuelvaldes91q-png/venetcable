@@ -30,7 +30,7 @@ export async function analyzeWithAI(
         "HTTP-Referer": "https://mikrotik-monitor.local",
       },
       body: JSON.stringify({
-        model: "meta-llama/llama-3.1-8b-instruct:free",
+        model: "meta-llama/llama-3.3-70b-instruct:free",
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: userMessage },

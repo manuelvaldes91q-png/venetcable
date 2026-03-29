@@ -206,15 +206,6 @@ export default function DashboardPage() {
   }, [selectedDevice, collectAndRefresh]);
 
   useEffect(() => {
-    const pollTelegram = () => {
-      fetch("/api/telegram/poll", { method: "POST" }).catch(() => {});
-    };
-    pollTelegram();
-    const interval = setInterval(pollTelegram, 10000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
     const dev = dashboardData?.devices.find((d) => d.id === selectedDevice);
     setWanInput(dev?.wanInterfaceName || "");
   }, [selectedDevice, dashboardData]);
