@@ -196,3 +196,23 @@ export const users = sqliteTable("users", {
     () => new Date()
   ),
 });
+
+export const aiKnowledge = sqliteTable("ai_knowledge", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  errorPattern: text("error_pattern").notNull(),
+  errorType: text("error_type").notNull(),
+  description: text("description").notNull(),
+  solution: text("solution").notNull(),
+  occurrences: integer("occurrences").notNull().default(1),
+  lastOccurredAt: integer("last_occurred_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+});
+
+export const aiLogs = sqliteTable("ai_logs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  analysisType: text("analysis_type").notNull(),
+  findings: text("findings").notNull(),
+  recommendations: text("recommendations"),
+  severity: text("severity").notNull().default("info"),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+});
