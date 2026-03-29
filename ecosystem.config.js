@@ -5,7 +5,7 @@ module.exports = {
     args: "start -p 7990",
     env: {
       NODE_OPTIONS: "--max-old-space-size=512",
-      OPENROUTER_API_KEY: "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",
+      OPENROUTER_API_KEY: "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",
       DB_PATH: "./data/mikrotik-monitor.db",
     },
   }],
