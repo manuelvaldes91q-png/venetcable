@@ -15,6 +15,8 @@ export async function analyzeWithAI(
     return "⚠️ No hay API key de OpenRouter configurada.\nAgrega OPENROUTER_API_KEY en las variables de entorno.\nObtén una gratis en https://openrouter.ai";
   }
 
+  console.log("AI Key loaded:", apiKey.substring(0, 15) + "...");
+
   const userMessage = question
     ? `Pregunta del usuario: ${question}\n\nDatos actuales de la red:\n${data}`
     : `Analiza estos datos de monitoreo y dame recomendaciones si detectas algún problema:\n\n${data}`;
@@ -27,7 +29,7 @@ export async function analyzeWithAI(
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "meta-llama/llama-3.3-8b-instruct:free",
+        model: "meta-llama/llama-3.1-8b-instruct:free",
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: userMessage },
@@ -41,7 +43,7 @@ export async function analyzeWithAI(
     if (!res.ok) {
       const err = await res.text();
       console.error("AI API error:", res.status, err);
-      return `⚠️ Error de la API de IA: ${res.status}`;
+      return `⚠️ Error de la API de IA (${res.status}): ${err}`;
     }
 
     const data = await res.json();
