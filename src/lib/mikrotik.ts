@@ -275,6 +275,14 @@ export async function fetchOspfNeighbors(
   }
 }
 
+export function toMikroTikDevice(device: { id: number; name: string; host: string; port: number; username: string; encryptedPassword: string }): MikroTikDevice {
+  return {
+    id: device.id, name: device.name, host: device.host,
+    port: device.port, username: device.username,
+    encryptedPassword: device.encryptedPassword,
+  };
+}
+
 export async function testConnection(
   device: MikroTikDevice
 ): Promise<{ success: boolean; version?: string; boardName?: string; error?: string }> {
