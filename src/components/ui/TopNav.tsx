@@ -9,6 +9,7 @@ const LINKS = [
   { href: "/dashboard/antennas", label: "Antenas" },
   { href: "/dashboard/provisioning", label: "Aprovisionamiento" },
   { href: "/dashboard/devices", label: "Dispositivos" },
+  { href: "/dashboard/vps", label: "VPS" },
   { href: "/dashboard/ai", label: "IA" },
   { href: "/dashboard/users", label: "Usuarios" },
   { href: "/dashboard/telegram", label: "Telegram" },
