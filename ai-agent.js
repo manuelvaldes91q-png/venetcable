@@ -10,10 +10,13 @@ async function pollTelegram() {
   isPolling = true;
   try {
     const res = await fetch(POLL_URL, { method: "POST", signal: AbortSignal.timeout(15000) });
-    if (res.status === 409) {
-      console.log("Bot polling conflict, waiting...");
+    if (!res.ok) {
+      const body = await res.text();
+      console.log("Poll response:", res.status, body);
     }
-  } catch {} finally {
+  } catch (e) {
+    console.error("Poll error:", e.message);
+  } finally {
     isPolling = false;
   }
 }
