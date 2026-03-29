@@ -171,6 +171,60 @@ export async function fetchFirewallRules(
   }
 }
 
+export async function fetchNatRules(
+  device: MikroTikDevice
+): Promise<Record<string, string>[]> {
+  const conn = await connectToDevice(device);
+  try {
+    const response = await conn.write("/ip/firewall/nat/print");
+    return response.map((rule: Record<string, string>) => rule);
+  } catch {
+    return [];
+  } finally {
+    await conn.close();
+  }
+}
+
+export async function fetchFullConfig(
+  device: MikroTikDevice
+): Promise<{
+  system: Record<string, string> | null;
+  interfaces: Record<string, string>[];
+  routes: Record<string, string>[];
+  firewallRules: Record<string, string>[];
+  natRules: Record<string, string>[];
+  dhcpLeases: Record<string, string>[];
+  simpleQueues: Record<string, string>[];
+  arpEntries: Record<string, string>[];
+}> {
+  const conn = await connectToDevice(device);
+  try {
+    const [system, interfaces, routes, firewall, nat, leases, queues, arp] = await Promise.all([
+      conn.write("/system/resource/print").catch(() => []),
+      conn.write("/interface/print").catch(() => []),
+      conn.write("/ip/route/print").catch(() => []),
+      conn.write("/ip/firewall/filter/print").catch(() => []),
+      conn.write("/ip/firewall/nat/print").catch(() => []),
+      conn.write("/ip/dhcp-server/lease/print").catch(() => []),
+      conn.write("/queue/simple/print").catch(() => []),
+      conn.write("/ip/arp/print").catch(() => []),
+    ]);
+
+    return {
+      system: system[0] || null,
+      interfaces: interfaces.slice(0, 20),
+      routes: routes.slice(0, 15),
+      firewallRules: firewall.slice(0, 20),
+      natRules: nat.slice(0, 10),
+      dhcpLeases: leases.slice(0, 20),
+      simpleQueues: queues.slice(0, 15),
+      arpEntries: arp.slice(0, 15),
+    };
+  } finally {
+    await conn.close();
+  }
+}
+
 export async function fetchBgpSessions(
   device: MikroTikDevice
 ): Promise<BgpSession[]> {

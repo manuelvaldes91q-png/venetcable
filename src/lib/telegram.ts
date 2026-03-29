@@ -7,9 +7,10 @@ import { eq, desc, and } from "drizzle-orm";
 import {
   type MikroTikDevice, type DhcpLease, pingFromDevice,
   fetchDhcpLeases, fetchSimpleQueues, fetchInterfaceNames, fetchArpEntries, fetchInterfaceTraffic,
+  fetchFullConfig,
   convertDhcpToStatic, addArpBinding, addSimpleQueue, toggleArp, toggleQueue,
 } from "@/lib/mikrotik";
-import { analyzeWithAI, buildNetworkSnapshot } from "@/lib/ai";
+import { analyzeWithAI, buildNetworkSnapshot, buildFullMikroTikSnapshot } from "@/lib/ai";
 
 interface TelegramUpdate {
   update_id: number;
@@ -945,63 +946,38 @@ async function processCommand(botToken: string, chatId: string, rawText: string)
 
     if (!question && command === "/ai") {
       await sendTelegramMessage(botToken, chatId,
-        `🤖 *ASISTENTE IA*\n` +
+        `🤖 *EXPERTO MIKROTIK*\n` +
         `━━━━━━━━━━━━━━━━━━━━━\n\n` +
         `Escribe tu pregunta después de /ai:\n\n` +
         `📌 Ejemplos:\n` +
+        `  /ai Analiza mi configuración completa\n` +
+        `  /ai ¿Hay algo raro en mi firewall?\n` +
+        `  /ai Dame un script para limitar P2P\n` +
         `  /ai ¿Por qué el CPU está alto?\n` +
-        `  /ai ¿Cómo optimizar la red?\n` +
-        `  /ai Analiza el estado actual\n` +
-        `  /ai ¿Qué antenas están caídas?`
+        `  /ai Optimiza mis colas de velocidad\n` +
+        `  /ai Revisa mis reglas NAT\n` +
+        `  /ai Dame un script para QoS\n` +
+        `  /ai ¿Tengo puertos abiertos peligrosos?`
       );
       return;
     }
 
-    await sendTelegramMessage(botToken, chatId, "🤖 Analizando la red...");
+    await sendTelegramMessage(botToken, chatId, "🤖 Consultando configuración del router...");
 
     try {
-      const allDevices = await db.select().from(devices);
-      const allAntennas = await db.select().from(antennas);
-
-      const metrics = [];
-      for (const device of allDevices) {
-        const [sys] = await db.select().from(systemMetrics)
-          .where(eq(systemMetrics.deviceId, device.id))
-          .orderBy(desc(systemMetrics.timestamp)).limit(1);
-        const [lat] = await db.select().from(latencyMetrics)
-          .where(eq(latencyMetrics.deviceId, device.id))
-          .orderBy(desc(latencyMetrics.timestamp)).limit(1);
-        const memUsed = sys && sys.totalMemory && sys.freeMemory
-          ? Math.round(((sys.totalMemory - sys.freeMemory) / sys.totalMemory) * 100) : null;
-        metrics.push({
-          deviceName: device.name, cpu: sys?.cpuLoad ?? null,
-          ram: memUsed, uptime: sys?.uptime ?? null,
-          ping: lat?.rttAvg ?? null, loss: lat?.packetLoss ?? null,
-        });
+      const device = await getFirstOnlineDevice();
+      if (!device) {
+        await sendTelegramMessage(botToken, chatId, "⚠️ No hay dispositivos en línea.");
+        return;
       }
 
-      let queues: { name: string; rate: string }[] = [];
-      const onlineDevice = allDevices.find((d) => d.status === "online");
-      if (onlineDevice) {
-        try {
-          const mikrotik = toMikroTikDevice(onlineDevice);
-          const allQueues = await fetchSimpleQueues(mikrotik);
-          queues = allQueues.filter((q) => {
-            const parts = (q.rate || "0/0").split("/");
-            return parseInt(parts[0] || "0", 10) > 0 || parseInt(parts[1] || "0", 10) > 0;
-          }).slice(0, 10).map((q) => ({ name: q.name, rate: q.rate }));
-        } catch {}
-      }
+      await sendTelegramMessage(botToken, chatId, "⏳ Analizando configuración completa del MikroTik...");
 
-      const snapshot = buildNetworkSnapshot(
-        allDevices.map((d) => ({ name: d.name, host: d.host, status: d.status })),
-        metrics,
-        allAntennas.map((a) => ({ name: a.name, ip: a.ip, status: a.status })),
-        queues
-      );
+      const config = await fetchFullConfig(device);
+      const snapshot = buildFullMikroTikSnapshot(config);
 
       const response = await analyzeWithAI(snapshot, question);
-      await sendTelegramMessage(botToken, chatId, `🤖 *Respuesta IA*\n\n${response}`);
+      await sendTelegramMessage(botToken, chatId, `🤖 *Respuesta del Experto*\n\n${response}`);
     } catch (e) {
       console.error("AI error:", e);
       await sendTelegramMessage(botToken, chatId, "❌ Error al conectar con la IA.");
