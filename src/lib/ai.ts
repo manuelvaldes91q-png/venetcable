@@ -30,7 +30,7 @@ export async function analyzeWithAI(
         "HTTP-Referer": "https://mikrotik-monitor.local",
       },
       body: JSON.stringify({
-        model: "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+        model: "openrouter/free",
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: userMessage },
