@@ -136,6 +136,14 @@ export default function DashboardPage() {
   const [tracerResult, setTracerResult] = useState<{ hop: number; address: string; time: string }[]>([]);
   const [diagRunning, setDiagRunning] = useState(false);
   const [antennas, setAntennas] = useState<{ id: number; name: string; ip: string | null; location: string | null; reachable: boolean | null; pingRtt: number | null }[]>([]);
+  const [timeRange, setTimeRange] = useState(24);
+  const TIME_RANGES = [
+    { label: "1h", hours: 1 },
+    { label: "6h", hours: 6 },
+    { label: "24h", hours: 24 },
+    { label: "7d", hours: 168 },
+    { label: "30d", hours: 720 },
+  ];
 
   const collectAndRefresh = useCallback(async (deviceId: number) => {
     setCollecting((p) => ({ ...p, [deviceId]: true }));
@@ -154,12 +162,12 @@ export default function DashboardPage() {
       const data = await res.json();
       setDashboardData(data);
     }
-    const hRes = await fetch(`/api/metrics?deviceId=${deviceId}&hours=24`);
+    const hRes = await fetch(`/api/metrics?deviceId=${deviceId}&hours=${timeRange}`);
     if (hRes.ok) {
       const hData = await hRes.json();
       setMetricHistory(hData);
     }
-  }, []);
+  }, [timeRange]);
 
   const fetchDashboard = useCallback(async () => {
     try {
@@ -468,11 +476,27 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-                  <div className="panel">
+                    <div className="panel">
                     <div className="panel-header">
                       <div className="flex items-center justify-between w-full">
                         <h3 style={{ fontSize: "13px", fontWeight: 600, color: "#d8d9da" }}>Tráfico WAN</h3>
                         <div className="flex items-center gap-2">
+                          <div className="flex gap-1">
+                            {TIME_RANGES.map((tr) => (
+                              <button
+                                key={tr.label}
+                                onClick={() => setTimeRange(tr.hours)}
+                                style={{
+                                  padding: "2px 8px", fontSize: "10px", fontWeight: 600, borderRadius: 3, cursor: "pointer",
+                                  border: "none",
+                                  backgroundColor: timeRange === tr.hours ? "#3b82f6" : "#2c3039",
+                                  color: timeRange === tr.hours ? "#fff" : "#8e8e8e",
+                                }}
+                              >
+                                {tr.label}
+                              </button>
+                            ))}
+                          </div>
                           <input
                             type="text"
                             value={wanInput}
