@@ -353,16 +353,26 @@ async function processCommand(botToken: string, chatId: string, rawText: string)
   const command = text.trim().toLowerCase();
 
   if (command === "/start" || command === "/help") {
-    const help = `*MikroTik Monitor Bot*
-
-Usa los botones de abajo para navegar:
-
-📊 *Estado* — Ver dispositivos y métricas
-📡 *Antenas* — Estado de antenas (up/down)
-📋 *Leases* — Ver clientes DHCP
-⚡ *Colas* — Ver velocidades asignadas
-🔧 *Aprovisionar* — Agregar cliente nuevo
-➕ *Agregar Antena* — Monitorear antena nueva`;
+    const help = [
+      `🌐 *MikroTik Monitor*`,
+      ``,
+      `━━━ 📡 *Monitoreo* ━━━`,
+      `📊 Estado — Resumen de red`,
+      `🖥 Dispositivos — Lista de routers`,
+      `💾 CPU — Carga del procesador`,
+      `📶 Latencia — Ping y pérdida`,
+      ``,
+      `━━━ 📡 *Antenas* ━━━`,
+      `📡 Antenas — Estado up/down`,
+      `➕ Agregar — Nueva antena`,
+      ``,
+      `━━━ 🔧 *Aprovisionamiento* ━━━`,
+      `📋 Leases — Clientes DHCP`,
+      `🔧 Aprovisionar — Nuevo cliente`,
+      `⚡ Colas — Tráfico en vivo`,
+      ``,
+      `Usa los botones de abajo 👇`,
+    ].join("\n");
     await sendTelegramMessage(botToken, chatId, help, true);
     return;
   }
@@ -370,20 +380,24 @@ Usa los botones de abajo para navegar:
   if (command === "/status") {
     const allDevices = await db.select().from(devices);
     if (allDevices.length === 0) {
-      await sendTelegramMessage(botToken, chatId, "No hay dispositivos configurados.");
+      await sendTelegramMessage(botToken, chatId, "⚠️ No hay dispositivos configurados.");
       return;
     }
 
     const online = allDevices.filter((d) => d.status === "online").length;
     const offline = allDevices.filter((d) => d.status === "offline").length;
 
-    let msg = `📊 *RESUMEN DE RED*\n`;
-    msg += `${"─".repeat(24)}\n`;
-    msg += `🟢 En línea: ${online}  |  🔴 Caídos: ${offline}\n\n`;
+    const now = new Date().toLocaleString("es-ES", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" });
+    let msg = `🌐 *RESUMEN DE RED*\n`;
+    msg += `📅 ${now}\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `🟢 En línea: *${online}*  |  🔴 Caídos: *${offline}*\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
 
     for (const device of allDevices) {
       const icon = device.status === "online" ? "🟢" : "🔴";
-      msg += `${icon} *${device.name}*\n`;
+      const statusText = device.status === "online" ? "EN LÍNEA" : "FUERA DE LÍNEA";
+      msg += `${icon} *${device.name}* — _${statusText}_\n`;
 
       const [sys] = await db
         .select().from(systemMetrics)
@@ -399,28 +413,25 @@ Usa los botones de abajo para navegar:
         const cpuBar = (sys.cpuLoad ?? 0) > 80 ? "🔴" : (sys.cpuLoad ?? 0) > 50 ? "🟡" : "🟢";
         const memUsed = sys.totalMemory && sys.freeMemory
           ? (((sys.totalMemory - sys.freeMemory) / sys.totalMemory) * 100).toFixed(0) : "?";
-        msg += `   CPU: ${cpuBar} ${sys.cpuLoad ?? "?"}%\n`;
-        msg += `   RAM: ${memUsed}%\n`;
-        msg += `   Uptime: ${sys.uptime || "?"}\n`;
+        msg += `  ┣ 💾 CPU: ${cpuBar} *${sys.cpuLoad ?? "?"}%*\n`;
+        msg += `  ┣ 🧠 RAM: *${memUsed}%*\n`;
+        msg += `  ┣ ⏱ Uptime: _${sys.uptime || "?"}_\n`;
       }
 
       if (lat) {
         const latIcon = (lat.rttAvg ?? 0) > 150 ? "🔴" : (lat.rttAvg ?? 0) > 80 ? "🟡" : "🟢";
-        msg += `   Ping: ${latIcon} ${lat.rttAvg ?? "?"}ms\n`;
-        msg += `   Pérdida: ${lat.packetLoss ?? 0}%\n`;
+        msg += `  ┣ 📶 Ping: ${latIcon} *${lat.rttAvg ?? "?"}ms*\n`;
+        msg += `  ┗ ❌ Pérdida: *${lat.packetLoss ?? 0}%*\n`;
       }
 
       if (device.status === "online" && device.wanInterfaceName) {
         const wanName = device.wanInterfaceName;
         const wanIfaces = await db
-          .select()
-          .from(interfaceMetrics)
+          .select().from(interfaceMetrics)
           .where(eq(interfaceMetrics.deviceId, device.id))
-          .orderBy(desc(interfaceMetrics.timestamp))
-          .limit(10);
+          .orderBy(desc(interfaceMetrics.timestamp)).limit(10);
 
         const wanEntries = wanIfaces.filter((i) => i.interfaceName === wanName);
-
         if (wanEntries.length >= 2) {
           const t0 = wanEntries[0].timestamp;
           const t1 = wanEntries[1].timestamp;
@@ -429,9 +440,9 @@ Usa los botones de abajo para navegar:
             const rxRate = Math.max(0, ((wanEntries[0].rxBytes ?? 0) - (wanEntries[1].rxBytes ?? 0)) * 8 / dt);
             const txRate = Math.max(0, ((wanEntries[0].txBytes ?? 0) - (wanEntries[1].txBytes ?? 0)) * 8 / dt);
             const fmtBps = (bps: number) => bps > 1_000_000 ? `${(bps / 1_000_000).toFixed(1)} Mbps` : bps > 1_000 ? `${(bps / 1_000).toFixed(0)} Kbps` : `${bps} bps`;
-            msg += `   WAN (${wanName}):\n`;
-            msg += `      ⬇️ Descarga: ${fmtBps(rxRate)}\n`;
-            msg += `      ⬆️ Subida: ${fmtBps(txRate)}\n`;
+            msg += `  ┗ 🌐 WAN _(${wanName})_:\n`;
+            msg += `      ⬇️ Bajada: *${fmtBps(rxRate)}*\n`;
+            msg += `      ⬆️ Subida: *${fmtBps(txRate)}*\n`;
           }
         }
       }
@@ -446,57 +457,73 @@ Usa los botones de abajo para navegar:
   if (command === "/devices") {
     const allDevices = await db.select().from(devices);
     if (allDevices.length === 0) {
-      await sendTelegramMessage(botToken, chatId, "No hay dispositivos configurados.");
+      await sendTelegramMessage(botToken, chatId, "⚠️ No hay dispositivos configurados.");
       return;
     }
+    let msg = `🖥 *DISPOSITIVOS*\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `Total: *${allDevices.length}*\n\n`;
     const lines = allDevices.map((d) => {
       const icon = d.status === "online" ? "🟢" : d.status === "offline" ? "🔴" : "🟡";
-      return `${icon} ${d.name} — ${d.host}:${d.port}`;
+      return `${icon} *${d.name}*\n  📍 ${d.host}:${d.port}`;
     });
-    await sendTelegramMessage(botToken, chatId, `*Dispositivos*\n\n${lines.join("\n")}`);
+    msg += lines.join("\n\n");
+    await sendTelegramMessage(botToken, chatId, msg);
     return;
   }
 
   if (command === "/cpu") {
     const allDevices = await db.select().from(devices);
-    const lines: string[] = [];
+    let msg = `💾 *CARGA DE CPU*\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
     for (const device of allDevices) {
       const [latest] = await db
         .select().from(systemMetrics)
         .where(eq(systemMetrics.deviceId, device.id))
         .orderBy(desc(systemMetrics.timestamp)).limit(1);
       if (latest) {
-        const icon = (latest.cpuLoad ?? 0) > 80 ? "🔴" : (latest.cpuLoad ?? 0) > 50 ? "🟡" : "🟢";
-        lines.push(`${icon} ${device.name}: ${latest.cpuLoad ?? "?"}%`);
+        const cpu = latest.cpuLoad ?? 0;
+        const icon = cpu > 80 ? "🔴" : cpu > 50 ? "🟡" : "🟢";
+        const bar = "█".repeat(Math.min(10, Math.round(cpu / 10))) + "░".repeat(Math.max(0, 10 - Math.round(cpu / 10)));
+        msg += `${icon} *${device.name}*\n`;
+        msg += `  \`${bar}\` *${cpu}%*\n\n`;
       }
     }
-    await sendTelegramMessage(botToken, chatId, `*CPU*\n\n${lines.length > 0 ? lines.join("\n") : "Sin datos"}`);
+    await sendTelegramMessage(botToken, chatId, msg || "⚠️ Sin datos de CPU.");
     return;
   }
 
   if (command === "/latency") {
     const allDevices = await db.select().from(devices);
-    const lines: string[] = [];
+    let msg = `📶 *LATENCIA Y PÉRDIDA*\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
     for (const device of allDevices) {
       const [latest] = await db
         .select().from(latencyMetrics)
         .where(eq(latencyMetrics.deviceId, device.id))
         .orderBy(desc(latencyMetrics.timestamp)).limit(1);
       if (latest) {
-        const icon = (latest.rttAvg ?? 0) > 150 ? "🔴" : (latest.rttAvg ?? 0) > 80 ? "🟡" : "🟢";
-        lines.push(`${icon} ${device.name}: ${latest.rttAvg ?? "?"}ms (pérdida: ${latest.packetLoss ?? 0}%)`);
+        const rtt = latest.rttAvg ?? 0;
+        const loss = latest.packetLoss ?? 0;
+        const icon = rtt > 150 ? "🔴" : rtt > 80 ? "🟡" : "🟢";
+        const lossIcon = loss > 10 ? "🔴" : loss > 0 ? "🟡" : "🟢";
+        msg += `${icon} *${device.name}*\n`;
+        msg += `  ┣ 📶 Ping: *${rtt}ms*\n`;
+        msg += `  ┗ ❌ Pérdida: ${lossIcon} *${loss}%*\n\n`;
       }
     }
-    await sendTelegramMessage(botToken, chatId, `*Latencia*\n\n${lines.length > 0 ? lines.join("\n") : "Sin datos"}`);
+    await sendTelegramMessage(botToken, chatId, msg || "⚠️ Sin datos de latencia.");
     return;
   }
 
   if (command === "/antenas") {
     const allAntennas = await db.select().from(antennas);
     if (allAntennas.length === 0) {
-      await sendTelegramMessage(botToken, chatId, "No hay antenas registradas.");
+      await sendTelegramMessage(botToken, chatId, "⚠️ No hay antenas registradas.\nUsa ➕ *Agregar Antena* para agregar una.");
       return;
     }
+
+    await sendTelegramMessage(botToken, chatId, "⏳ Verificando antenas...");
 
     const down: string[] = [];
     const up: string[] = [];
@@ -507,27 +534,31 @@ Usa los botones de abajo para navegar:
         if (device && device.status === "online") {
           const result = await pingFromDevice(toMikroTikDevice(device), ant.ip, 3);
           if (result.success) {
-            up.push(`${ant.name} — ${ant.ip} — ${result.rttAvg}ms`);
+            up.push(`✅ *${ant.name}*\n  📍 ${ant.ip} — _${result.rttAvg}ms_`);
           } else {
-            down.push(`${ant.name} — ${ant.ip}`);
+            down.push(`❌ *${ant.name}*\n  📍 ${ant.ip}`);
           }
         } else {
-          down.push(`${ant.name} — ${ant.ip} (router offline)`);
+          down.push(`⚠️ *${ant.name}*\n  📍 ${ant.ip} — _router offline_`);
         }
       } else {
-        down.push(`${ant.name} — ${ant.ip || "sin IP"}`);
+        down.push(`⚠️ *${ant.name}*\n  📍 ${ant.ip || "sin IP"}`);
       }
     }
 
-    let msg = "";
+    let msg = `📡 *ESTADO DE ANTENAS*\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `🟢 Prendidas: *${up.length}*  |  🔴 Caídas: *${down.length}*\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
     if (down.length > 0) {
-      msg += `🔴 *CAÍDAS (${down.length})*\n${down.map((l) => `  • ${l}`).join("\n")}\n\n`;
+      msg += `🔴 *ANTENAS CAÍDAS*\n${down.join("\n\n")}\n\n`;
     }
     if (up.length > 0) {
-      msg += `🟢 *PRENDIDAS (${up.length})*\n${up.map((l) => `  • ${l}`).join("\n")}`;
+      msg += `🟢 *ANTENAS PRENDIDAS*\n${up.join("\n\n")}`;
     }
 
-    await sendTelegramMessage(botToken, chatId, msg || "No hay antenas.");
+    await sendTelegramMessage(botToken, chatId, msg);
     return;
   }
 
@@ -547,7 +578,12 @@ Usa los botones de abajo para navegar:
     });
 
     await sendTelegramMessage(botToken, chatId,
-      `*Agregar Antena — Paso 1/4*\n\nEscribe el nombre de la antena:\n(Ej: Sector Norte, Torre A)`
+      `➕ *AGREGAR ANTENA*\n` +
+      `━━━━━━━━━━━━━━━━━━━━━\n` +
+      `Paso 1 de 4 — _Nombre_\n\n` +
+      `Escribe el nombre de la antena:\n` +
+      `📌 Ejemplo: Sector Norte, Torre A\n\n` +
+      `Cancelar en cualquier momento: /cancel`
     );
     return;
   }
@@ -557,7 +593,7 @@ Usa los botones de abajo para navegar:
     try {
       const device = await getFirstOnlineDevice();
       if (!device) {
-        await sendTelegramMessage(botToken, chatId, "No hay dispositivos en línea.");
+        await sendTelegramMessage(botToken, chatId, "⚠️ No hay dispositivos en línea.");
         return;
       }
 
@@ -565,19 +601,26 @@ Usa los botones de abajo para navegar:
       const activeLeases = allLeases.filter((l) => l.status === "bound");
 
       if (activeLeases.length === 0) {
-        await sendTelegramMessage(botToken, chatId, "No hay leases activos.");
+        await sendTelegramMessage(botToken, chatId, "📋 No hay leases activos en este momento.");
         return;
       }
 
-      const lines = activeLeases.map((l) => {
+      let msg = `📋 *LEASES ACTIVOS*\n`;
+      msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
+      msg += `🖥 ${device.name} | Total: *${activeLeases.length}*\n\n`;
+
+      activeLeases.forEach((l, i) => {
         const type = l.dynamic ? "DHCP" : "Estático";
-        return `🟢 ${l.address} — ${l.hostName || "sin nombre"} — ${type}`;
+        msg += `${i + 1}. 🟢 *${l.address}*\n`;
+        msg += `   👤 ${l.hostName || "sin nombre"}\n`;
+        msg += `   🏷 ${type}\n\n`;
       });
 
-      await sendTelegramMessage(botToken, chatId, `📋 *Leases Activos — ${device.name}* (${activeLeases.length})\n\n${lines.join("\n")}`);
+      msg += `Usa 🔧 *Aprovisionar* para convertir un cliente DHCP a estático.`;
+      await sendTelegramMessage(botToken, chatId, msg);
     } catch (e) {
       console.error("Leases error:", e);
-      await sendTelegramMessage(botToken, chatId, "⚠️ Error al consultar leases. Verifica la conexión del router.");
+      await sendTelegramMessage(botToken, chatId, "❌ Error al consultar leases.\nVerifica la conexión del router.");
     }
     return;
   }
@@ -586,7 +629,7 @@ Usa los botones de abajo para navegar:
     try {
       const device = await getFirstOnlineDevice();
       if (!device) {
-        await sendTelegramMessage(botToken, chatId, "No hay dispositivos en línea.");
+        await sendTelegramMessage(botToken, chatId, "⚠️ No hay dispositivos en línea.");
         return;
       }
 
@@ -594,7 +637,7 @@ Usa los botones de abajo para navegar:
       const dynamicLeases = allLeases.filter((l) => l.dynamic && l.status === "bound");
 
       if (dynamicLeases.length === 0) {
-        await sendTelegramMessage(botToken, chatId, "No hay leases dinámicos activos para aprovisionar.");
+        await sendTelegramMessage(botToken, chatId, "📋 No hay leases dinámicos activos para aprovisionar.");
         return;
       }
 
@@ -610,18 +653,24 @@ Usa los botones de abajo para navegar:
         },
       });
 
-      const lines = dynamicLeases.map((l, i) =>
-        `${i + 1}. 🟢 ${l.address} — ${l.hostName || "sin nombre"} — ${l.macAddress}`
-      );
+      let msg = `🔧 *APROVISIONAR CLIENTE*\n`;
+      msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
+      msg += `Paso 1 de 4 — _Seleccionar cliente_\n\n`;
+      msg += `🖥 ${device.name}\n\n`;
 
-      await sendTelegramMessage(botToken, chatId,
-        `*Paso 1/4 — Seleccionar cliente*\n\n` +
-        `📋 *Leases dinámicos en ${device.name}:*\n\n${lines.join("\n")}\n\n` +
-        `Escribe el *número* del cliente:\n(o /cancel para cancelar)`
-      );
+      dynamicLeases.forEach((l, i) => {
+        msg += `${i + 1}. 🟢 *${l.address}*\n`;
+        msg += `   👤 ${l.hostName || "sin nombre"}\n`;
+        msg += `   🏷 ${l.macAddress}\n\n`;
+      });
+
+      msg += `Escribe el *número* del cliente:\n`;
+      msg += `❌ Cancelar: /cancel`;
+
+      await sendTelegramMessage(botToken, chatId, msg);
     } catch (e) {
       console.error("Provision error:", e);
-      await sendTelegramMessage(botToken, chatId, "⚠️ Error al consultar leases. Verifica la conexión del router.");
+      await sendTelegramMessage(botToken, chatId, "❌ Error al consultar leases.\nVerifica la conexión del router.");
     }
     return;
   }
@@ -631,7 +680,7 @@ Usa los botones de abajo para navegar:
     try {
       const device = await getFirstOnlineDevice();
       if (!device) {
-        await sendTelegramMessage(botToken, chatId, "No hay dispositivos en línea.");
+        await sendTelegramMessage(botToken, chatId, "⚠️ No hay dispositivos en línea.");
         return;
       }
 
@@ -644,28 +693,35 @@ Usa los botones de abajo para navegar:
       });
 
       if (activeQueues.length === 0) {
-        await sendTelegramMessage(botToken, chatId, "No hay clientes con tráfico activo en este momento.");
+        await sendTelegramMessage(botToken, chatId, "⚡ No hay clientes con tráfico activo en este momento.");
         return;
       }
 
       const fmtRate = (bps: number) => bps > 1_000_000 ? `${(bps / 1_000_000).toFixed(1)} Mbps` : bps > 1_000 ? `${(bps / 1_000).toFixed(0)} Kbps` : `${bps} bps`;
 
-      const lines = activeQueues.map((q) => {
+      let msg = `⚡ *TRÁFICO EN VIVO*\n`;
+      msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
+      msg += `🖥 ${device.name} | Activos: *${activeQueues.length}*\n\n`;
+
+      activeQueues.forEach((q) => {
         const rateParts = (q.rate || "0/0").split("/");
         const rUp = parseInt(rateParts[0] || "0", 10);
         const rDown = parseInt(rateParts[1] || "0", 10);
-        return `🟢 *${q.name}* — ${q.target.replace("/32", "")}\n   ${fmtRate(rUp)}↑ / ${fmtRate(rDown)}↓`;
+        msg += `🟢 *${q.name}*\n`;
+        msg += `   📍 ${q.target.replace("/32", "")}\n`;
+        msg += `   ⬆️ ${fmtRate(rUp)}  |  ⬇️ ${fmtRate(rDown)}\n\n`;
       });
 
-      await sendTelegramMessage(botToken, chatId, `⚡ *Clientes con Tráfico — ${device.name}* (${activeQueues.length})\n\n${lines.join("\n\n")}`);
+      msg += `_Actualizado: ${new Date().toLocaleTimeString("es-ES")}_`;
+      await sendTelegramMessage(botToken, chatId, msg);
     } catch (e) {
       console.error("Queues error:", e);
-      await sendTelegramMessage(botToken, chatId, "⚠️ Error al consultar colas. Verifica la conexión del router.");
+      await sendTelegramMessage(botToken, chatId, "❌ Error al consultar colas.\nVerifica la conexión del router.");
     }
     return;
   }
 
-  await sendTelegramMessage(botToken, chatId, "Comando no reconocido. Usa /help para ver los comandos disponibles.");
+  await sendTelegramMessage(botToken, chatId, "❓ Comando no reconocido.\nUsa /help para ver los comandos disponibles.");
 }
 
 export async function pollTelegramUpdates() {
