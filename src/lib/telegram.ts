@@ -7,7 +7,7 @@ import { eq, desc, and } from "drizzle-orm";
 import {
   type MikroTikDevice, type DhcpLease, pingFromDevice,
   fetchDhcpLeases, fetchSimpleQueues, fetchInterfaceNames, fetchArpEntries, fetchInterfaceTraffic,
-  fetchFullConfig,
+  fetchFullConfig, fetchSystemResources,
   convertDhcpToStatic, addArpBinding, addSimpleQueue, toggleArp, toggleQueue,
 } from "@/lib/mikrotik";
 import { analyzeWithAI, buildNetworkSnapshot, buildFullMikroTikSnapshot } from "@/lib/ai";
@@ -450,76 +450,46 @@ async function processCommand(botToken: string, chatId: string, rawText: string)
   }
 
   if (command === "/status") {
+    await sendTelegramMessage(botToken, chatId, "⏳ Consultando estado en tiempo real...");
+
     const allDevices = await db.select().from(devices);
     if (allDevices.length === 0) {
       await sendTelegramMessage(botToken, chatId, "⚠️ No hay dispositivos configurados.");
       return;
     }
 
-    const online = allDevices.filter((d) => d.status === "online").length;
-    const offline = allDevices.filter((d) => d.status === "offline").length;
-
-    const now = new Date().toLocaleString("es-ES", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" });
+    const now = new Date().toLocaleString("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit", day: "2-digit", month: "short" });
     let msg = `🌐 *RESUMEN DE RED*\n`;
     msg += `📅 ${now}\n`;
     msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
-    msg += `🟢 En línea: *${online}*  |  🔴 Caídos: *${offline}*\n`;
-    msg += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
 
     for (const device of allDevices) {
-      const icon = device.status === "online" ? "🟢" : "🔴";
-      const statusText = device.status === "online" ? "EN LÍNEA" : "FUERA DE LÍNEA";
-      msg += `${icon} *${device.name}* — _${statusText}_\n`;
+      const mikrotik = toMikroTikDevice(device);
 
-      const [sys] = await db
-        .select().from(systemMetrics)
-        .where(eq(systemMetrics.deviceId, device.id))
-        .orderBy(desc(systemMetrics.timestamp)).limit(1);
+      try {
+        const sys = await fetchSystemResources(mikrotik);
+        const ping = await pingFromDevice(mikrotik, "8.8.8.8", 3);
 
-      const [lat] = await db
-        .select().from(latencyMetrics)
-        .where(eq(latencyMetrics.deviceId, device.id))
-        .orderBy(desc(latencyMetrics.timestamp)).limit(1);
-
-      if (sys) {
-        const cpuBar = (sys.cpuLoad ?? 0) > 80 ? "🔴" : (sys.cpuLoad ?? 0) > 50 ? "🟡" : "🟢";
+        const cpu = sys.cpuLoad;
+        const cpuIcon = cpu > 80 ? "🔴" : cpu > 50 ? "🟡" : "🟢";
         const memUsed = sys.totalMemory && sys.freeMemory
           ? (((sys.totalMemory - sys.freeMemory) / sys.totalMemory) * 100).toFixed(0) : "?";
-        msg += `  ┣ 💾 CPU: ${cpuBar} *${sys.cpuLoad ?? "?"}%*\n`;
+        const pingIcon = (ping.rttAvg ?? 0) > 150 ? "🔴" : (ping.rttAvg ?? 0) > 80 ? "🟡" : "🟢";
+
+        msg += `\n🟢 *${device.name}* — _EN LÍNEA_\n`;
+        msg += `  ┣ 💾 CPU: ${cpuIcon} *${cpu}%*\n`;
         msg += `  ┣ 🧠 RAM: *${memUsed}%*\n`;
-        msg += `  ┣ ⏱ Uptime: _${sys.uptime || "?"}_\n`;
-      }
-
-      if (lat) {
-        const latIcon = (lat.rttAvg ?? 0) > 150 ? "🔴" : (lat.rttAvg ?? 0) > 80 ? "🟡" : "🟢";
-        msg += `  ┣ 📶 Ping: ${latIcon} *${lat.rttAvg ?? "?"}ms*\n`;
-        msg += `  ┗ ❌ Pérdida: *${lat.packetLoss ?? 0}%*\n`;
-      }
-
-      if (device.status === "online" && device.wanInterfaceName) {
-        const wanName = device.wanInterfaceName;
-        const wanIfaces = await db
-          .select().from(interfaceMetrics)
-          .where(eq(interfaceMetrics.deviceId, device.id))
-          .orderBy(desc(interfaceMetrics.timestamp)).limit(10);
-
-        const wanEntries = wanIfaces.filter((i) => i.interfaceName === wanName);
-        if (wanEntries.length >= 2) {
-          const t0 = wanEntries[0].timestamp;
-          const t1 = wanEntries[1].timestamp;
-          if (t0 && t1) {
-            const dt = Math.max(1, (t0.getTime() - t1.getTime()) / 1000);
-            const rxRate = Math.max(0, ((wanEntries[0].rxBytes ?? 0) - (wanEntries[1].rxBytes ?? 0)) * 8 / dt);
-            const txRate = Math.max(0, ((wanEntries[0].txBytes ?? 0) - (wanEntries[1].txBytes ?? 0)) * 8 / dt);
-            const fmtBps = (bps: number) => bps > 1_000_000 ? `${(bps / 1_000_000).toFixed(1)} Mbps` : bps > 1_000 ? `${(bps / 1_000).toFixed(0)} Kbps` : `${bps} bps`;
-            msg += `  ┗ 🌐 WAN _(${wanName})_:\n`;
-            msg += `      ⬇️ Bajada: *${fmtBps(rxRate)}*\n`;
-            msg += `      ⬆️ Subida: *${fmtBps(txRate)}*\n`;
-          }
+        msg += `  ┣ ⏱ Uptime: _${sys.uptime}_\n`;
+        msg += `  ┣ 🏷 RouterOS: _${sys.version}_\n`;
+        msg += `  ┣ 📦 Modelo: _${sys.boardName}_\n`;
+        if (ping.success) {
+          msg += `  ┗ 📶 Ping 8.8.8.8: ${pingIcon} *${ping.rttAvg}ms*\n`;
+        } else {
+          msg += `  ┗ 📶 Ping 8.8.8.8: 🔴 *Sin conexión a internet*\n`;
         }
+      } catch {
+        msg += `\n🔴 *${device.name}* — _FUERA DE LÍNEA_\n`;
       }
-
-      msg += `\n`;
     }
 
     await sendTelegramMessage(botToken, chatId, msg);
