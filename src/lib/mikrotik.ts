@@ -338,6 +338,8 @@ export interface SimpleQueue {
   target: string;
   maxLimit: string;
   disabled: string;
+  rate: string;
+  bytes: string;
 }
 
 export async function fetchDhcpLeases(
@@ -447,6 +449,8 @@ export async function fetchSimpleQueues(
       target: q["target"] || "",
       maxLimit: q["max-limit"] || "",
       disabled: q["disabled"] || "false",
+      rate: q["rate"] || "0/0",
+      bytes: q["bytes"] || "0/0",
     }));
   } catch {
     return [];

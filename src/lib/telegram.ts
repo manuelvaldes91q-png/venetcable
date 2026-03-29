@@ -588,12 +588,18 @@ Usa los botones de abajo para navegar:
       return;
     }
 
+    const fmtRate = (bps: number) => bps > 1_000_000 ? `${(bps / 1_000_000).toFixed(1)} Mbps` : bps > 1_000 ? `${(bps / 1_000).toFixed(0)} Kbps` : `${bps} bps`;
+
     const lines = queues.map((q) => {
       const icon = q.disabled === "true" ? "🔴" : "🟢";
-      return `${icon} ${q.name} — ${q.target} — ${q.maxLimit}`;
+      const rateParts = (q.rate || "0/0").split("/");
+      const rUp = parseInt(rateParts[0] || "0", 10);
+      const rDown = parseInt(rateParts[1] || "0", 10);
+      const limitParts = (q.maxLimit || "0/0").split("/");
+      return `${icon} *${q.name}* — ${q.target.replace("/32", "")}\n   Límite: ${limitParts[0]}↑ / ${limitParts[1]}↓\n   Tráfico: ${fmtRate(rUp)}↑ / ${fmtRate(rDown)}↓`;
     });
 
-    await sendTelegramMessage(botToken, chatId, `⚡ *Colas de Velocidad — ${device.name}*\n\n${lines.join("\n")}`);
+    await sendTelegramMessage(botToken, chatId, `⚡ *Colas — ${device.name}*\n\n${lines.join("\n\n")}`);
     return;
   }
 

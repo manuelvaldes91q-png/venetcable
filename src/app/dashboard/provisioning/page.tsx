@@ -19,6 +19,8 @@ interface Queue {
   target: string;
   maxLimit: string;
   disabled: string;
+  rate: string;
+  bytes: string;
 }
 
 interface ArpEntry {
@@ -533,7 +535,7 @@ export default function ProvisioningPage() {
             <div className="panel-body" style={{ padding: 0 }}>
               <table style={{ width: "100%", fontSize: "12px" }}>
                 <thead><tr style={{ borderBottom: "1px solid #2c3039" }}>
-                  {["Nombre", "IP", "Subida", "Bajada", "ARP", "Acción"].map((h) => (
+                  {["Nombre", "IP", "Límite", "Tráfico", "ARP", "Acción"].map((h) => (
                     <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: "#5a5f6a", fontWeight: 600, fontSize: "11px", textTransform: "uppercase" }}>{h}</th>
                   ))}
                 </tr></thead>
@@ -551,8 +553,24 @@ export default function ProvisioningPage() {
                         onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}>
                         <td style={{ padding: "8px 16px", color: "#d8d9da", fontWeight: 500 }}>{q.name}</td>
                         <td style={{ padding: "8px 16px", color: "#8e8e8e", fontVariantNumeric: "tabular-nums" }}>{ip}</td>
-                        <td style={{ padding: "8px 16px", color: "#ff9830", fontWeight: 600 }}>{formatLimit(parts[0] || "0")}</td>
-                        <td style={{ padding: "8px 16px", color: "#b877d9", fontWeight: 600 }}>{formatLimit(parts[1] || "0")}</td>
+                        <td style={{ padding: "8px 16px", fontSize: "11px", color: "#5a5f6a" }}>
+                          {formatLimit(parts[0] || "0")}↑ / {formatLimit(parts[1] || "0")}↓
+                        </td>
+                        <td style={{ padding: "8px 16px", fontSize: "11px" }}>
+                          {(() => {
+                            const rateParts = (q.rate || "0/0").split("/");
+                            const rUp = parseInt(rateParts[0] || "0", 10);
+                            const rDown = parseInt(rateParts[1] || "0", 10);
+                            const fmt = (bps: number) => bps > 1_000_000 ? `${(bps / 1_000_000).toFixed(1)}M` : bps > 1_000 ? `${(bps / 1_000).toFixed(0)}K` : `${bps}`;
+                            return (
+                              <div>
+                                <span style={{ color: "#ff9830" }}>↑{fmt(rUp)}</span>
+                                {" "}
+                                <span style={{ color: "#b877d9" }}>↓{fmt(rDown)}</span>
+                              </div>
+                            );
+                          })()}
+                        </td>
                         <td style={{ padding: "8px 16px" }}>
                           {matchingArp && (
                             <span className={`status-dot ${isCut ? "status-dot-offline" : "status-dot-online"}`} />
