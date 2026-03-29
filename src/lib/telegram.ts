@@ -510,105 +510,114 @@ Usa los botones de abajo para navegar:
   }
 
   if (command === "/leases") {
-    const device = await getFirstOnlineDevice();
-    if (!device) {
-      await sendTelegramMessage(botToken, chatId, "No hay dispositivos en línea.");
-      return;
+    await sendTelegramMessage(botToken, chatId, "⏳ Consultando leases...");
+    try {
+      const device = await getFirstOnlineDevice();
+      if (!device) {
+        await sendTelegramMessage(botToken, chatId, "No hay dispositivos en línea.");
+        return;
+      }
+
+      const allLeases = await fetchDhcpLeases(device);
+      const activeLeases = allLeases.filter((l) => l.status === "bound");
+
+      if (activeLeases.length === 0) {
+        await sendTelegramMessage(botToken, chatId, "No hay leases activos.");
+        return;
+      }
+
+      const lines = activeLeases.map((l) => {
+        const type = l.dynamic ? "DHCP" : "Estático";
+        return `🟢 ${l.address} — ${l.hostName || "sin nombre"} — ${type}`;
+      });
+
+      await sendTelegramMessage(botToken, chatId, `📋 *Leases Activos — ${device.name}* (${activeLeases.length})\n\n${lines.join("\n")}`);
+    } catch (e) {
+      console.error("Leases error:", e);
+      await sendTelegramMessage(botToken, chatId, "⚠️ Error al consultar leases. Verifica la conexión del router.");
     }
-
-    const leases = await fetchDhcpLeases(device);
-    if (leases.length === 0) {
-      await sendTelegramMessage(botToken, chatId, "No hay leases DHCP.");
-      return;
-    }
-
-    const lines = leases.map((l, i) => {
-      const icon = l.status === "bound" ? "🟢" : "🟡";
-      const type = l.dynamic ? "DHCP" : "Estático";
-      return `${i + 1}. ${icon} ${l.address} — ${l.hostName || "sin nombre"} — ${l.macAddress} [${type}]`;
-    });
-
-    await sendTelegramMessage(botToken, chatId,
-      `📋 *DHCP Leases — ${device.name}*\n\n${lines.join("\n")}\n\n` +
-      `Usa /provision para aprovisionar un cliente dinámico.`
-    );
     return;
   }
 
   if (command === "/provision") {
-    const device = await getFirstOnlineDevice();
-    if (!device) {
-      await sendTelegramMessage(botToken, chatId, "No hay dispositivos en línea.");
-      return;
+    try {
+      const device = await getFirstOnlineDevice();
+      if (!device) {
+        await sendTelegramMessage(botToken, chatId, "No hay dispositivos en línea.");
+        return;
+      }
+
+      const allLeases = await fetchDhcpLeases(device);
+      const dynamicLeases = allLeases.filter((l) => l.dynamic && l.status === "bound");
+
+      if (dynamicLeases.length === 0) {
+        await sendTelegramMessage(botToken, chatId, "No hay leases dinámicos activos para aprovisionar.");
+        return;
+      }
+
+      conversationState.set(chatId, {
+        type: "provision",
+        session: {
+          step: "select_lease",
+          device,
+          leases: dynamicLeases,
+          selectedLease: dynamicLeases[0],
+          clientName: "",
+          arpInterface: "",
+        },
+      });
+
+      const lines = dynamicLeases.map((l, i) =>
+        `${i + 1}. 🟢 ${l.address} — ${l.hostName || "sin nombre"} — ${l.macAddress}`
+      );
+
+      await sendTelegramMessage(botToken, chatId,
+        `*Paso 1/4 — Seleccionar cliente*\n\n` +
+        `📋 *Leases dinámicos en ${device.name}:*\n\n${lines.join("\n")}\n\n` +
+        `Escribe el *número* del cliente:\n(o /cancel para cancelar)`
+      );
+    } catch (e) {
+      console.error("Provision error:", e);
+      await sendTelegramMessage(botToken, chatId, "⚠️ Error al consultar leases. Verifica la conexión del router.");
     }
-
-    const allLeases = await fetchDhcpLeases(device);
-    const dynamicLeases = allLeases.filter((l) => l.dynamic);
-
-    if (dynamicLeases.length === 0) {
-      await sendTelegramMessage(botToken, chatId, "No hay leases dinámicos para aprovisionar.\nTodos los leases ya son estáticos.");
-      return;
-    }
-
-    conversationState.set(chatId, {
-      type: "provision",
-      session: {
-        step: "select_lease",
-        device,
-        leases: dynamicLeases,
-        selectedLease: dynamicLeases[0],
-        clientName: "",
-        arpInterface: "",
-      },
-    });
-
-    const lines = dynamicLeases.map((l, i) =>
-      `${i + 1}. 🟢 ${l.address} — ${l.hostName || "sin nombre"} — ${l.macAddress}`
-    );
-
-    await sendTelegramMessage(botToken, chatId,
-      `*Paso 1/4 — Seleccionar cliente*\n\n` +
-      `📋 *Leases dinámicos en ${device.name}:*\n\n${lines.join("\n")}\n\n` +
-      `Escribe el *número* del cliente que deseas aprovisionar:\n` +
-      `(o /cancel para cancelar)`
-    );
     return;
   }
 
   if (command === "/queues") {
-    const device = await getFirstOnlineDevice();
-    if (!device) {
-      await sendTelegramMessage(botToken, chatId, "No hay dispositivos en línea.");
-      return;
-    }
+    await sendTelegramMessage(botToken, chatId, "⏳ Consultando tráfico...");
+    try {
+      const device = await getFirstOnlineDevice();
+      if (!device) {
+        await sendTelegramMessage(botToken, chatId, "No hay dispositivos en línea.");
+        return;
+      }
 
-    const queues = await fetchSimpleQueues(device);
-    if (queues.length === 0) {
-      await sendTelegramMessage(botToken, chatId, "No hay colas configuradas.");
-      return;
-    }
+      const queues = await fetchSimpleQueues(device);
+      const activeQueues = queues.filter((q) => {
+        const rateParts = (q.rate || "0/0").split("/");
+        const rUp = parseInt(rateParts[0] || "0", 10);
+        const rDown = parseInt(rateParts[1] || "0", 10);
+        return rUp > 0 || rDown > 0;
+      });
 
-    const fmtRate = (bps: number) => bps > 1_000_000 ? `${(bps / 1_000_000).toFixed(1)} Mbps` : bps > 1_000 ? `${(bps / 1_000).toFixed(0)} Kbps` : `${bps} bps`;
+      if (activeQueues.length === 0) {
+        await sendTelegramMessage(botToken, chatId, "No hay clientes con tráfico activo en este momento.");
+        return;
+      }
 
-    const lines = queues.map((q) => {
-      const icon = q.disabled === "true" ? "🔴" : "🟢";
-      const rateParts = (q.rate || "0/0").split("/");
-      const rUp = parseInt(rateParts[0] || "0", 10);
-      const rDown = parseInt(rateParts[1] || "0", 10);
-      const limitParts = (q.maxLimit || "0/0").split("/");
-      return `${icon} *${q.name}* — ${q.target.replace("/32", "")}\n   Límite: ${limitParts[0]}↑ / ${limitParts[1]}↓\n   Tráfico: ${fmtRate(rUp)}↑ / ${fmtRate(rDown)}↓`;
-    });
+      const fmtRate = (bps: number) => bps > 1_000_000 ? `${(bps / 1_000_000).toFixed(1)} Mbps` : bps > 1_000 ? `${(bps / 1_000).toFixed(0)} Kbps` : `${bps} bps`;
 
-    await sendTelegramMessage(botToken, chatId, `⚡ *Colas — ${device.name}*\n\n${lines.join("\n\n")}`);
-    return;
-  }
+      const lines = activeQueues.map((q) => {
+        const rateParts = (q.rate || "0/0").split("/");
+        const rUp = parseInt(rateParts[0] || "0", 10);
+        const rDown = parseInt(rateParts[1] || "0", 10);
+        return `🟢 *${q.name}* — ${q.target.replace("/32", "")}\n   ${fmtRate(rUp)}↑ / ${fmtRate(rDown)}↓`;
+      });
 
-  if (command === "/cancel") {
-    if (conversationState.has(chatId)) {
-      conversationState.delete(chatId);
-      await sendTelegramMessage(botToken, chatId, "❌ Operación cancelada.");
-    } else {
-      await sendTelegramMessage(botToken, chatId, "No hay ninguna operación en curso.");
+      await sendTelegramMessage(botToken, chatId, `⚡ *Clientes con Tráfico — ${device.name}* (${activeQueues.length})\n\n${lines.join("\n\n")}`);
+    } catch (e) {
+      console.error("Queues error:", e);
+      await sendTelegramMessage(botToken, chatId, "⚠️ Error al consultar colas. Verifica la conexión del router.");
     }
     return;
   }
