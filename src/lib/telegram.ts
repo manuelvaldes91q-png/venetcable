@@ -40,23 +40,53 @@ interface AntennaSession {
 
 const conversationState = new Map<string, { type: "provision"; session: ProvisionSession } | { type: "antenna"; session: AntennaSession }>();
 
-async function sendTelegramMessage(botToken: string, chatId: string | number, text: string) {
+async function sendTelegramMessage(botToken: string, chatId: string | number, text: string, keyboard?: boolean) {
   try {
+    const body: Record<string, unknown> = { chat_id: chatId, text, parse_mode: "Markdown" };
+    if (keyboard) {
+      body.reply_markup = {
+        keyboard: [
+          [{ text: "📊 Estado" }, { text: "📡 Antenas" }],
+          [{ text: "📋 Leases" }, { text: "⚡ Colas" }],
+          [{ text: "🔧 Aprovisionar" }, { text: "➕ Agregar Antena" }],
+        ],
+        resize_keyboard: true,
+        one_time_keyboard: false,
+      };
+    }
     const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text, parse_mode: "Markdown" }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
+      const bodyPlain: Record<string, unknown> = { chat_id: chatId, text };
+      if (keyboard) {
+        bodyPlain.reply_markup = body.reply_markup;
+      }
       await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: chatId, text }),
+        body: JSON.stringify(bodyPlain),
       });
     }
   } catch (e) {
     console.error("Telegram send error:", e);
   }
+}
+
+const COMMAND_MAP: Record<string, string> = {
+  "📊 Estado": "/status",
+  "📡 Antenas": "/antenas",
+  "📋 Leases": "/leases",
+  "⚡ Colas": "/queues",
+  "🔧 Aprovisionar": "/provision",
+  "➕ Agregar Antena": "/addantena",
+  "❌ Cancelar": "/cancel",
+};
+
+function resolveCommand(text: string): string {
+  return COMMAND_MAP[text.trim()] || text;
 }
 
 function toMikroTikDevice(device: typeof devices.$inferSelect): MikroTikDevice {
@@ -302,7 +332,9 @@ async function handleAntennaInput(botToken: string, chatId: string, text: string
   return false;
 }
 
-async function processCommand(botToken: string, chatId: string, text: string) {
+async function processCommand(botToken: string, chatId: string, rawText: string) {
+  const text = resolveCommand(rawText);
+
   const [registeredUser] = await db
     .select().from(telegramUsers)
     .where(eq(telegramUsers.telegramChatId, chatId));
@@ -323,24 +355,15 @@ async function processCommand(botToken: string, chatId: string, text: string) {
   if (command === "/start" || command === "/help") {
     const help = `*MikroTik Monitor Bot*
 
-*Monitoreo:*
-/status — Estado de dispositivos
-/devices — Lista de dispositivos
-/cpu — Carga de CPU
-/latency — Latencia y pérdida
+Usa los botones de abajo para navegar:
 
-*Antenas:*
-/antenas — Estado de antenas
-/addantena — Agregar antena al monitoreo
-
-*Aprovisionamiento:*
-/leases — Ver leases DHCP
-/provision — Aprovisionar cliente paso a paso
-/queues — Ver colas de velocidad
-
-/cancel — Cancelar operación en curso
-/help — Mostrar esta ayuda`;
-    await sendTelegramMessage(botToken, chatId, help);
+📊 *Estado* — Ver dispositivos y métricas
+📡 *Antenas* — Estado de antenas (up/down)
+📋 *Leases* — Ver clientes DHCP
+⚡ *Colas* — Ver velocidades asignadas
+🔧 *Aprovisionar* — Agregar cliente nuevo
+➕ *Agregar Antena* — Monitorear antena nueva`;
+    await sendTelegramMessage(botToken, chatId, help, true);
     return;
   }
 
