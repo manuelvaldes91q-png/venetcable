@@ -13,7 +13,7 @@ async function pollTelegram() {
   if (isPolling) return;
   isPolling = true;
   try {
-    const res = await fetch(POLL_URL, { method: "POST", signal: AbortSignal.timeout(15000) });
+    const res = await fetch(POLL_URL, { method: "POST", signal: AbortSignal.timeout(30000) });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
       console.log("Poll:", res.status, body);
