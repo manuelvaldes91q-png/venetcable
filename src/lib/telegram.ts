@@ -45,7 +45,18 @@ interface CutActivateSession {
   clients: { queue: { id: string; name: string; target: string }; ip: string; arp: { id: string } | undefined; isDisabled: boolean }[];
 }
 
-const conversationState = new Map<string, { type: "provision"; session: ProvisionSession } | { type: "antenna"; session: AntennaSession } | { type: "cut"; session: CutActivateSession } | { type: "activate"; session: CutActivateSession }>();
+const conversationState = new Map<string, { type: "provision"; session: ProvisionSession } | { type: "antenna"; session: AntennaSession } | { type: "cut"; session: CutActivateSession } | { type: "activate"; session: CutActivateSession } | { type: "select_device"; session: { devices: typeof devices.$inferSelect[] } }>();
+
+const selectedDevice = new Map<string, number>();
+
+async function getUserDevice(chatId: string): Promise<MikroTikDevice | null> {
+  const deviceId = selectedDevice.get(chatId);
+  if (deviceId) {
+    const [device] = await db.select().from(devices).where(eq(devices.id, deviceId));
+    if (device && device.status === "online") return toMikroTikDevice(device);
+  }
+  return getFirstOnlineDevice();
+}
 
 async function sendTelegramMessage(botToken: string, chatId: string | number, text: string, keyboard?: boolean) {
   try {
@@ -53,10 +64,12 @@ async function sendTelegramMessage(botToken: string, chatId: string | number, te
     if (keyboard) {
       body.reply_markup = {
         keyboard: [
-          [{ text: "📊 Estado" }, { text: "📡 Antenas" }],
-          [{ text: "🔌 Puertos" }, { text: "📋 Leases" }],
-          [{ text: "⚡ Colas" }, { text: "✂️ Cortar" }],
+          [{ text: "📊 Estado" }, { text: "🖥 Dispositivos" }],
+          [{ text: "📡 Antenas" }, { text: "🔌 Puertos" }],
+          [{ text: "📋 Leases" }, { text: "⚡ Colas" }],
+          [{ text: "✂️ Cortar" }, { text: "🔌 Activar" }],
           [{ text: "🔧 Aprovisionar" }, { text: "➕ Agregar Antena" }],
+          [{ text: "🖥 VPS" }, { text: "🤖 IA" }],
         ],
         resize_keyboard: true,
         one_time_keyboard: false,
@@ -85,6 +98,7 @@ async function sendTelegramMessage(botToken: string, chatId: string | number, te
 
 const COMMAND_MAP: Record<string, string> = {
   "📊 Estado": "/status",
+  "🖥 Dispositivos": "/devices",
   "📡 Antenas": "/antenas",
   "🔌 Puertos": "/puertos",
   "📋 Leases": "/leases",
@@ -93,6 +107,8 @@ const COMMAND_MAP: Record<string, string> = {
   "🔌 Activar": "/activar",
   "🔧 Aprovisionar": "/provision",
   "➕ Agregar Antena": "/addantena",
+  "🖥 VPS": "/vps",
+  "🤖 IA": "/ai",
   "❌ Cancelar": "/cancel",
 };
 
@@ -423,15 +439,12 @@ async function processCommand(botToken: string, chatId: string, rawText: string)
       `🌐 *MikroTik Monitor*`,
       ``,
       `━━━ 📡 *Monitoreo* ━━━`,
-      `📊 Estado — Resumen de red`,
-      `🖥 Dispositivos — Lista de routers`,
+      `📊 Estado — Resumen en tiempo real`,
+      `🖥 Dispositivos — Seleccionar router`,
       `🔌 Puertos — Estado de puertos físicos`,
+      `📡 Antenas — Estado up/down`,
       `💾 CPU — Carga del procesador`,
       `📶 Latencia — Ping y pérdida`,
-      ``,
-      `━━━ 📡 *Antenas* ━━━`,
-      `📡 Antenas — Estado up/down`,
-      `➕ Agregar — Nueva antena`,
       ``,
       `━━━ 🔧 *Aprovisionamiento* ━━━`,
       `📋 Leases — Clientes DHCP`,
@@ -439,9 +452,11 @@ async function processCommand(botToken: string, chatId: string, rawText: string)
       `⚡ Colas — Tráfico en vivo`,
       `✂️ Cortar — Desconectar cliente`,
       `🔌 Activar — Restaurar cliente`,
+      `➕ Agregar — Nueva antena`,
       ``,
-      `━━━ 🤖 *Inteligencia Artificial* ━━━`,
+      `━━━ 🤖 *IA y VPS* ━━━`,
       `🤖 Preguntar — /ai tu pregunta`,
+      `🖥 VPS — Estado del servidor`,
       ``,
       `Usa los botones de abajo 👇`,
     ].join("\n");
@@ -496,28 +511,102 @@ async function processCommand(botToken: string, chatId: string, rawText: string)
     return;
   }
 
-  if (command === "/devices") {
+  if (command === "/devices" || command.startsWith("/seleccionar")) {
     const allDevices = await db.select().from(devices);
     if (allDevices.length === 0) {
       await sendTelegramMessage(botToken, chatId, "⚠️ No hay dispositivos configurados.");
       return;
     }
+
+    const currentId = selectedDevice.get(chatId);
+
+    if (command.startsWith("/seleccionar ")) {
+      const num = parseInt(command.replace("/seleccionar ", ""), 10);
+      if (isNaN(num) || num < 1 || num > allDevices.length) {
+        await sendTelegramMessage(botToken, chatId, `Número inválido. Usa 1-${allDevices.length}`);
+        return;
+      }
+      const dev = allDevices[num - 1];
+      selectedDevice.set(chatId, dev.id);
+      await sendTelegramMessage(botToken, chatId,
+        `✅ *Dispositivo seleccionado*\n\n` +
+        `${dev.status === "online" ? "🟢" : "🔴"} *${dev.name}*\n` +
+        `📍 ${dev.host}:${dev.port}\n\n` +
+        `Todos los comandos ahora usan este dispositivo.`
+      );
+      return;
+    }
+
     let msg = `🖥 *DISPOSITIVOS*\n`;
     msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
-    msg += `Total: *${allDevices.length}*\n\n`;
-    const lines = allDevices.map((d) => {
-      const icon = d.status === "online" ? "🟢" : d.status === "offline" ? "🔴" : "🟡";
-      return `${icon} *${d.name}*\n  📍 ${d.host}:${d.port}`;
+    msg += `Actual: ${currentId ? "📌" : "🔄 Auto"}\n\n`;
+
+    allDevices.forEach((d, i) => {
+      const icon = d.status === "online" ? "🟢" : "🔴";
+      const selected = d.id === currentId ? " ← seleccionado" : "";
+      msg += `${i + 1}. ${icon} *${d.name}*\n`;
+      msg += `   📍 ${d.host}:${d.port}${selected}\n\n`;
     });
-    msg += lines.join("\n\n");
+
+    msg += `Para seleccionar: /seleccionar 1`;
     await sendTelegramMessage(botToken, chatId, msg);
+    return;
+  }
+
+  if (command === "/vps") {
+    await sendTelegramMessage(botToken, chatId, "⏳ Consultando VPS...");
+    try {
+      const { execSync } = await import("child_process");
+      const run = (cmd: string) => { try { return execSync(cmd, { encoding: "utf-8", timeout: 5000 }).trim(); } catch { return "?"; } };
+
+      const memInfo = run("free -h | grep Mem");
+      const memParts = memInfo.split(/\s+/);
+      const cpuInfo = run("top -bn1 | grep '%Cpu'");
+      const cpuMatch = cpuInfo.match(/([\d.]+)\s*id/);
+      const cpuUsed = cpuMatch ? Math.round(100 - parseFloat(cpuMatch[1])) : 0;
+      const diskInfo = run("df -h / | tail -1");
+      const diskParts = diskInfo.split(/\s+/);
+      const uptime = run("uptime -p").replace("up ", "");
+      const hostname = run("hostname");
+      const ip = run("hostname -I | awk '{print $1}'");
+
+      let pm2Status = "";
+      try {
+        const pm2Json = run("pm2 jlist");
+        const procs = JSON.parse(pm2Json);
+        procs.forEach((p: Record<string, Record<string, unknown>>) => {
+          const icon = p.pm2_env?.status === "online" ? "🟢" : "🔴";
+          const cpu = p.monit?.cpu ?? 0;
+          const mem = ((p.monit?.memory as number) || 0) / 1024 / 1024;
+          pm2Status += `  ${icon} *${p.name}* — CPU: ${cpu}% | RAM: ${mem.toFixed(0)}MB\n`;
+        });
+      } catch { pm2Status = "  No disponible\n"; }
+
+      const cpuIcon = cpuUsed > 80 ? "🔴" : cpuUsed > 50 ? "🟡" : "🟢";
+      const memUsed = memParts[1] || "?";
+      const memTotal = memParts[1] || "?";
+
+      const msg = `🖥 *ESTADO DEL VPS*\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `📍 ${hostname} — ${ip}\n` +
+        `⏱ Uptime: ${uptime}\n\n` +
+        `💾 CPU: ${cpuIcon} *${cpuUsed}%*\n` +
+        `🧠 RAM: *${memUsed}* de ${memTotal}\n` +
+        `💿 Disco: *${diskParts[2] || "?"}* usado (${diskParts[4] || "?"})\n\n` +
+        `📦 *Servicios:*\n${pm2Status}`;
+
+      await sendTelegramMessage(botToken, chatId, msg);
+    } catch (e) {
+      console.error("VPS error:", e);
+      await sendTelegramMessage(botToken, chatId, "❌ Error al consultar VPS.");
+    }
     return;
   }
 
   if (command === "/puertos") {
     await sendTelegramMessage(botToken, chatId, "⏳ Consultando puertos...");
     try {
-      const device = await getFirstOnlineDevice();
+      const device = await getUserDevice(chatId);
       if (!device) {
         await sendTelegramMessage(botToken, chatId, "⚠️ No hay dispositivos en línea.");
         return;
@@ -683,7 +772,7 @@ async function processCommand(botToken: string, chatId: string, rawText: string)
   if (command === "/leases") {
     await sendTelegramMessage(botToken, chatId, "⏳ Consultando leases...");
     try {
-      const device = await getFirstOnlineDevice();
+      const device = await getUserDevice(chatId);
       if (!device) {
         await sendTelegramMessage(botToken, chatId, "⚠️ No hay dispositivos en línea.");
         return;
@@ -719,7 +808,7 @@ async function processCommand(botToken: string, chatId: string, rawText: string)
 
   if (command === "/provision") {
     try {
-      const device = await getFirstOnlineDevice();
+      const device = await getUserDevice(chatId);
       if (!device) {
         await sendTelegramMessage(botToken, chatId, "⚠️ No hay dispositivos en línea.");
         return;
@@ -770,7 +859,7 @@ async function processCommand(botToken: string, chatId: string, rawText: string)
   if (command === "/queues") {
     await sendTelegramMessage(botToken, chatId, "⏳ Consultando tráfico...");
     try {
-      const device = await getFirstOnlineDevice();
+      const device = await getUserDevice(chatId);
       if (!device) {
         await sendTelegramMessage(botToken, chatId, "⚠️ No hay dispositivos en línea.");
         return;
@@ -816,7 +905,7 @@ async function processCommand(botToken: string, chatId: string, rawText: string)
   if (command === "/cortar") {
     await sendTelegramMessage(botToken, chatId, "⏳ Consultando clientes...");
     try {
-      const device = await getFirstOnlineDevice();
+      const device = await getUserDevice(chatId);
       if (!device) {
         await sendTelegramMessage(botToken, chatId, "⚠️ No hay dispositivos en línea.");
         return;
@@ -865,7 +954,7 @@ async function processCommand(botToken: string, chatId: string, rawText: string)
   if (command === "/activar") {
     await sendTelegramMessage(botToken, chatId, "⏳ Consultando clientes cortados...");
     try {
-      const device = await getFirstOnlineDevice();
+      const device = await getUserDevice(chatId);
       if (!device) {
         await sendTelegramMessage(botToken, chatId, "⚠️ No hay dispositivos en línea.");
         return;
@@ -935,7 +1024,7 @@ async function processCommand(botToken: string, chatId: string, rawText: string)
     await sendTelegramMessage(botToken, chatId, "🤖 Consultando configuración del router...");
 
     try {
-      const device = await getFirstOnlineDevice();
+      const device = await getUserDevice(chatId);
       if (!device) {
         await sendTelegramMessage(botToken, chatId, "⚠️ No hay dispositivos en línea.");
         return;
