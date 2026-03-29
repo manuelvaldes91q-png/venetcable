@@ -14,7 +14,6 @@ import {
   type MikroTikDevice,
 } from "@/lib/mikrotik";
 import { pingHost } from "@/lib/ping";
-import { pollTelegramUpdates, checkAndSendAlerts } from "@/lib/telegram";
 
 export async function POST(request: NextRequest) {
   let deviceId: number | undefined;
@@ -110,13 +109,6 @@ export async function POST(request: NextRequest) {
       .set({ status: "online", lastSeen: now, updatedAt: now })
       .where(eq(devices.id, device.id));
 
-    try {
-      await pollTelegramUpdates();
-      await checkAndSendAlerts();
-    } catch (e) {
-      console.error("Telegram integration error:", e);
-    }
-
     return NextResponse.json({ success: true, metrics, ping, googleDnsPing });
   } catch (error) {
     if (deviceId) {
@@ -124,13 +116,6 @@ export async function POST(request: NextRequest) {
         .update(devices)
         .set({ status: "offline", updatedAt: new Date() })
         .where(eq(devices.id, deviceId));
-    }
-
-    try {
-      await pollTelegramUpdates();
-      await checkAndSendAlerts();
-    } catch (e) {
-      console.error("Telegram integration error:", e);
     }
 
     return NextResponse.json(
