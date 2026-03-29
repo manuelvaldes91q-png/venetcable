@@ -1,4 +1,5 @@
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const OLLAMA_URL = "http://localhost:11434/api/chat";
 
 const SYSTEM_PROMPT = `Eres un ingeniero de redes experto en MikroTik RouterOS con más de 15 años de experiencia en ISPs.
 
@@ -20,64 +21,88 @@ REGLAS:
 - Explica el "por qué" de cada recomendación
 - Si no tienes suficiente información, pide más datos específicos`;
 
-export async function analyzeWithAI(
-  data: string,
-  question?: string,
-  retries = 2
-): Promise<string> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) {
-    return "⚠️ No hay API key de OpenRouter configurada.";
+async function callOllama(userMessage: string): Promise<string> {
+  const model = process.env.OLLAMA_MODEL || "tinyllama";
+  const res = await fetch(OLLAMA_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userMessage },
+      ],
+      stream: false,
+    }),
+    signal: AbortSignal.timeout(120000),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Ollama error: ${res.status} ${err}`);
   }
 
+  const data = await res.json();
+  return data.message?.content || "Sin respuesta de la IA.";
+}
+
+async function callOpenRouter(userMessage: string): Promise<string> {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) throw new Error("No API key");
+
+  const res = await fetch(OPENROUTER_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+      "HTTP-Referer": "https://mikrotik-monitor.local",
+    },
+    body: JSON.stringify({
+      model: "openrouter/free",
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userMessage },
+      ],
+      max_tokens: 1500,
+      temperature: 0.2,
+    }),
+    signal: AbortSignal.timeout(30000),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`OpenRouter error: ${res.status} ${err}`);
+  }
+
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || "Sin respuesta de la IA.";
+}
+
+export async function analyzeWithAI(
+  data: string,
+  question?: string
+): Promise<string> {
   const userMessage = question
     ? `PREGUNTA DEL USUARIO:\n${question}\n\nDATOS ACTUALES DE LA RED:\n${data}`
     : `Analiza estos datos de monitoreo y detecta problemas:\n\n${data}`;
 
-  for (let attempt = 0; attempt <= retries; attempt++) {
+  const useOllama = process.env.USE_OLLAMA === "true";
+
+  if (useOllama) {
     try {
-      const res = await fetch(OPENROUTER_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-          "HTTP-Referer": "https://mikrotik-monitor.local",
-        },
-        body: JSON.stringify({
-          model: "openrouter/free",
-          messages: [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: userMessage },
-          ],
-          max_tokens: 1500,
-          temperature: 0.2,
-      }),
-      signal: AbortSignal.timeout(30000),
-    });
-
-    if (!res.ok) {
-      const err = await res.text();
-      if (res.status === 429 && attempt < retries) {
-        const waitMs = (attempt + 1) * 10000;
-        console.log(`AI rate limited, retrying in ${waitMs / 1000}s...`);
-        await new Promise((r) => setTimeout(r, waitMs));
-        continue;
-      }
-      console.error("AI API error:", res.status, err);
-      return `⚠️ Error de la API (${res.status})`;
+      console.log("Using Ollama (local AI)");
+      return await callOllama(userMessage);
+    } catch (e) {
+      console.error("Ollama failed, trying OpenRouter:", e);
     }
+  }
 
-    const result = await res.json();
-    return result.choices?.[0]?.message?.content || "Sin respuesta de la IA.";
+  try {
+    return await callOpenRouter(userMessage);
   } catch (e) {
-    if (attempt < retries) {
-      await new Promise((r) => setTimeout(r, 5000));
-      continue;
-    }
-    console.error("AI error:", e);
+    console.error("All AI providers failed:", e);
+    return "⚠️ Error al conectar con la IA. Verifica que Ollama esté corriendo o que la API key sea válida.";
   }
-  }
-  return "⚠️ Error al conectar con la IA. Intenta más tarde.";
 }
 
 export function buildFullMikroTikSnapshot(configData: {
