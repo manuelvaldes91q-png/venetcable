@@ -137,6 +137,7 @@ export default function DashboardPage() {
   const [diagRunning, setDiagRunning] = useState(false);
   const [antennas, setAntennas] = useState<{ id: number; name: string; ip: string | null; location: string | null; reachable: boolean | null; pingRtt: number | null }[]>([]);
   const [timeRange, setTimeRange] = useState(24);
+  const [ports, setPorts] = useState<{ deviceName: string; ports: { name: string; status: string; comment?: string }[] }[]>([]);
   const TIME_RANGES = [
     { label: "1h", hours: 1 },
     { label: "6h", hours: 6 },
@@ -182,6 +183,10 @@ export default function DashboardPage() {
       const antRes = await fetch("/api/antennas");
       if (antRes.ok) {
         setAntennas(await antRes.json());
+      }
+      const portsRes = await fetch("/api/ports");
+      if (portsRes.ok) {
+        setPorts(await portsRes.json());
       }
     } catch {
     } finally {
@@ -430,6 +435,48 @@ export default function DashboardPage() {
                   )}
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {ports.length > 0 && (
+          <div className="panel mb-6">
+            <div className="panel-header">
+              <h3 style={{ fontSize: "13px", fontWeight: 600, color: "#d8d9da" }}>Puertos Físicos</h3>
+            </div>
+            <div className="panel-body" style={{ padding: "12px 16px" }}>
+              {ports.map((dev) => (
+                <div key={dev.deviceName} style={{ marginBottom: dev !== ports[ports.length - 1] ? "12px" : 0 }}>
+                  <p style={{ fontSize: "10px", fontWeight: 600, color: "#5a5f6a", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: "6px" }}>
+                    {dev.deviceName}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {dev.ports.map((port) => {
+                      const isConnected = port.status === "running";
+                      return (
+                        <div key={port.name} style={{
+                          padding: "6px 12px", borderRadius: 4,
+                          backgroundColor: isConnected ? "rgba(115,191,105,0.1)" : "rgba(242,73,92,0.1)",
+                          border: `1px solid ${isConnected ? "rgba(115,191,105,0.3)" : "rgba(242,73,92,0.3)"}`,
+                          display: "flex", alignItems: "center", gap: "6px",
+                        }}>
+                          <span style={{
+                            width: 8, height: 8, borderRadius: "50%",
+                            backgroundColor: isConnected ? "#73bf69" : "#f2495c",
+                            boxShadow: isConnected ? "0 0 6px rgba(115,191,105,0.5)" : "0 0 6px rgba(242,73,92,0.5)",
+                          }} />
+                          <span style={{ fontSize: "11px", fontWeight: 600, color: isConnected ? "#73bf69" : "#f2495c" }}>
+                            {port.name}
+                          </span>
+                          {port.comment && (
+                            <span style={{ fontSize: "10px", color: "#5a5f6a" }}>{port.comment}</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}

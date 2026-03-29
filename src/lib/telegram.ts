@@ -6,7 +6,7 @@ import {
 import { eq, desc, and } from "drizzle-orm";
 import {
   type MikroTikDevice, type DhcpLease, pingFromDevice,
-  fetchDhcpLeases, fetchSimpleQueues, fetchInterfaceNames, fetchArpEntries,
+  fetchDhcpLeases, fetchSimpleQueues, fetchInterfaceNames, fetchArpEntries, fetchInterfaceTraffic,
   convertDhcpToStatic, addArpBinding, addSimpleQueue, toggleArp, toggleQueue,
 } from "@/lib/mikrotik";
 
@@ -52,8 +52,8 @@ async function sendTelegramMessage(botToken: string, chatId: string | number, te
       body.reply_markup = {
         keyboard: [
           [{ text: "📊 Estado" }, { text: "📡 Antenas" }],
-          [{ text: "📋 Leases" }, { text: "⚡ Colas" }],
-          [{ text: "✂️ Cortar" }, { text: "🔌 Activar" }],
+          [{ text: "🔌 Puertos" }, { text: "📋 Leases" }],
+          [{ text: "⚡ Colas" }, { text: "✂️ Cortar" }],
           [{ text: "🔧 Aprovisionar" }, { text: "➕ Agregar Antena" }],
         ],
         resize_keyboard: true,
@@ -84,6 +84,7 @@ async function sendTelegramMessage(botToken: string, chatId: string | number, te
 const COMMAND_MAP: Record<string, string> = {
   "📊 Estado": "/status",
   "📡 Antenas": "/antenas",
+  "🔌 Puertos": "/puertos",
   "📋 Leases": "/leases",
   "⚡ Colas": "/queues",
   "✂️ Cortar": "/cortar",
@@ -422,6 +423,7 @@ async function processCommand(botToken: string, chatId: string, rawText: string)
       `━━━ 📡 *Monitoreo* ━━━`,
       `📊 Estado — Resumen de red`,
       `🖥 Dispositivos — Lista de routers`,
+      `🔌 Puertos — Estado de puertos físicos`,
       `💾 CPU — Carga del procesador`,
       `📶 Latencia — Ping y pérdida`,
       ``,
@@ -534,6 +536,56 @@ async function processCommand(botToken: string, chatId: string, rawText: string)
     });
     msg += lines.join("\n\n");
     await sendTelegramMessage(botToken, chatId, msg);
+    return;
+  }
+
+  if (command === "/puertos") {
+    await sendTelegramMessage(botToken, chatId, "⏳ Consultando puertos...");
+    try {
+      const device = await getFirstOnlineDevice();
+      if (!device) {
+        await sendTelegramMessage(botToken, chatId, "⚠️ No hay dispositivos en línea.");
+        return;
+      }
+
+      const interfaces = await fetchInterfaceTraffic(device);
+      const physicalPorts = interfaces.filter((i) =>
+        i.name.startsWith("ether") || i.name.startsWith("sfp")
+      );
+
+      if (physicalPorts.length === 0) {
+        await sendTelegramMessage(botToken, chatId, "🔌 No se encontraron puertos físicos.");
+        return;
+      }
+
+      const connected = physicalPorts.filter((p) => p.status === "running");
+      const disconnected = physicalPorts.filter((p) => p.status !== "running");
+
+      let msg = `🔌 *PUERTOS — ${device.name}*\n`;
+      msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
+      msg += `🟢 Conectados: *${connected.length}*  |  🔴 Desconectados: *${disconnected.length}*\n`;
+      msg += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+      if (connected.length > 0) {
+        msg += `🟢 *CONECTADOS*\n`;
+        connected.forEach((p) => {
+          msg += `  ✅ *${p.name}*${p.comment ? ` — _${p.comment}_` : ""}\n`;
+        });
+        msg += `\n`;
+      }
+
+      if (disconnected.length > 0) {
+        msg += `🔴 *DESCONECTADOS*\n`;
+        disconnected.forEach((p) => {
+          msg += `  ❌ *${p.name}*${p.comment ? ` — _${p.comment}_` : ""}\n`;
+        });
+      }
+
+      await sendTelegramMessage(botToken, chatId, msg);
+    } catch (e) {
+      console.error("Puertos error:", e);
+      await sendTelegramMessage(botToken, chatId, "❌ Error al consultar puertos.");
+    }
     return;
   }
 
