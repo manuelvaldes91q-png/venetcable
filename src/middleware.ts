@@ -6,7 +6,7 @@ const KEY = new TextEncoder().encode(
   process.env.JWT_SECRET || "mikrotik-monitor-jwt-secret-change-in-production"
 );
 
-const publicPaths = ["/login", "/setup", "/api/auth/login", "/api/auth/setup", "/api/auth/seed", "/api/telegram/poll", "/api/ai/agent", "/favicon.ico"];
+const publicPaths = ["/login", "/setup", "/api/auth/login", "/api/auth/setup", "/api/auth/seed", "/api/telegram/poll", "/api/ai/agent", "/api/devices", "/api/metrics", "/favicon.ico"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

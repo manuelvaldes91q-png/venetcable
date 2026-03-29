@@ -1,9 +1,13 @@
 const ANALYZE_URL = "http://localhost:7990/api/ai/agent";
 const POLL_URL = "http://localhost:7990/api/telegram/poll";
+const DEVICES_URL = "http://localhost:7990/api/devices";
+const METRICS_URL = "http://localhost:7990/api/metrics";
 const POLL_INTERVAL = 10000;
 const ANALYSIS_INTERVAL = 600000;
+const METRICS_INTERVAL = 60000;
 
 let isPolling = false;
+let isCollecting = false;
 
 async function pollTelegram() {
   if (isPolling) return;
@@ -18,6 +22,29 @@ async function pollTelegram() {
     console.error("Poll error:", e.message);
   } finally {
     isPolling = false;
+  }
+}
+
+async function collectMetrics() {
+  if (isCollecting) return;
+  isCollecting = true;
+  try {
+    const devRes = await fetch(DEVICES_URL, { signal: AbortSignal.timeout(5000) });
+    if (!devRes.ok) { isCollecting = false; return; }
+    const devices = await devRes.json();
+
+    for (const device of devices) {
+      try {
+        await fetch(METRICS_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ deviceId: device.id }),
+          signal: AbortSignal.timeout(30000),
+        });
+      } catch {}
+    }
+  } catch {} finally {
+    isCollecting = false;
   }
 }
 
@@ -58,12 +85,15 @@ async function start() {
   }
 
   console.log("- Telegram polling: every 10s");
+  console.log("- Metrics collection: every 60s");
   console.log("- Network analysis: every 10min");
 
   pollTelegram();
+  collectMetrics();
   setTimeout(runAnalysis, 30000);
 
   setInterval(pollTelegram, POLL_INTERVAL);
+  setInterval(collectMetrics, METRICS_INTERVAL);
   setInterval(runAnalysis, ANALYSIS_INTERVAL);
 }
 
