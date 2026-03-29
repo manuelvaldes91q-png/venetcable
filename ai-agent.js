@@ -3,7 +3,7 @@ const POLL_URL = "http://localhost:7990/api/telegram/poll";
 const DEVICES_URL = "http://localhost:7990/api/devices";
 const METRICS_URL = "http://localhost:7990/api/metrics";
 const POLL_INTERVAL = 10000;
-const ANALYSIS_INTERVAL = 600000;
+const ANALYSIS_INTERVAL = 900000;
 const METRICS_INTERVAL = 60000;
 
 let isPolling = false;

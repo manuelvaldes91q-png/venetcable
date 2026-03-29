@@ -22,51 +22,62 @@ REGLAS:
 
 export async function analyzeWithAI(
   data: string,
-  question?: string
+  question?: string,
+  retries = 2
 ): Promise<string> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     return "⚠️ No hay API key de OpenRouter configurada.";
   }
 
-  console.log("AI Key loaded:", apiKey.substring(0, 15) + "...");
-
   const userMessage = question
     ? `PREGUNTA DEL USUARIO:\n${question}\n\nDATOS ACTUALES DE LA RED:\n${data}`
     : `Analiza estos datos de monitoreo y detecta problemas:\n\n${data}`;
 
-  try {
-    const res = await fetch(OPENROUTER_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        "HTTP-Referer": "https://mikrotik-monitor.local",
-      },
-      body: JSON.stringify({
-        model: "openrouter/free",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userMessage },
-        ],
-        max_tokens: 1500,
-        temperature: 0.2,
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(OPENROUTER_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+          "HTTP-Referer": "https://mikrotik-monitor.local",
+        },
+        body: JSON.stringify({
+          model: "openrouter/free",
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: userMessage },
+          ],
+          max_tokens: 1500,
+          temperature: 0.2,
       }),
       signal: AbortSignal.timeout(30000),
     });
 
     if (!res.ok) {
       const err = await res.text();
+      if (res.status === 429 && attempt < retries) {
+        const waitMs = (attempt + 1) * 10000;
+        console.log(`AI rate limited, retrying in ${waitMs / 1000}s...`);
+        await new Promise((r) => setTimeout(r, waitMs));
+        continue;
+      }
       console.error("AI API error:", res.status, err);
       return `⚠️ Error de la API (${res.status})`;
     }
 
-    const data = await res.json();
-    return data.choices?.[0]?.message?.content || "Sin respuesta de la IA.";
+    const result = await res.json();
+    return result.choices?.[0]?.message?.content || "Sin respuesta de la IA.";
   } catch (e) {
+    if (attempt < retries) {
+      await new Promise((r) => setTimeout(r, 5000));
+      continue;
+    }
     console.error("AI error:", e);
-    return "⚠️ Error al conectar con la IA. Intenta más tarde.";
   }
+  }
+  return "⚠️ Error al conectar con la IA. Intenta más tarde.";
 }
 
 export function buildFullMikroTikSnapshot(configData: {
