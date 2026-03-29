@@ -1,7 +1,7 @@
 const ANALYZE_URL = "http://localhost:7990/api/ai/agent";
 const POLL_URL = "http://localhost:7990/api/telegram/poll";
 const POLL_INTERVAL = 10000;
-const ANALYSIS_INTERVAL = 300000;
+const ANALYSIS_INTERVAL = 600000;
 
 let isPolling = false;
 
@@ -32,7 +32,7 @@ async function runAnalysis() {
 
 console.log("AI Agent started");
 console.log("- Telegram polling: every 10s");
-console.log("- Network analysis: every 5min");
+console.log("- Network analysis: every 10min");
 
 pollTelegram();
 setTimeout(runAnalysis, 30000);
