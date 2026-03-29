@@ -197,32 +197,43 @@ export async function fetchFullConfig(
   simpleQueues: Record<string, string>[];
   arpEntries: Record<string, string>[];
 }> {
+  const safeWrite = async (conn: Awaited<ReturnType<typeof connectToDevice>>, cmd: string): Promise<Record<string, string>[]> => {
+    try {
+      return await conn.write(cmd);
+    } catch (e) {
+      console.error(`MikroTik ${cmd} error:`, e);
+      return [];
+    }
+  };
+
+  const result = {
+    system: null as Record<string, string> | null,
+    interfaces: [] as Record<string, string>[],
+    routes: [] as Record<string, string>[],
+    firewallRules: [] as Record<string, string>[],
+    natRules: [] as Record<string, string>[],
+    dhcpLeases: [] as Record<string, string>[],
+    simpleQueues: [] as Record<string, string>[],
+    arpEntries: [] as Record<string, string>[],
+  };
+
   const conn = await connectToDevice(device);
   try {
-    const [system, interfaces, routes, firewall, nat, leases, queues, arp] = await Promise.all([
-      conn.write("/system/resource/print").catch(() => []),
-      conn.write("/interface/print").catch(() => []),
-      conn.write("/ip/route/print").catch(() => []),
-      conn.write("/ip/firewall/filter/print").catch(() => []),
-      conn.write("/ip/firewall/nat/print").catch(() => []),
-      conn.write("/ip/dhcp-server/lease/print").catch(() => []),
-      conn.write("/queue/simple/print").catch(() => []),
-      conn.write("/ip/arp/print").catch(() => []),
-    ]);
+    const sys = await safeWrite(conn, "/system/resource/print");
+    result.system = sys[0] || null;
 
-    return {
-      system: system[0] || null,
-      interfaces: interfaces.slice(0, 20),
-      routes: routes.slice(0, 15),
-      firewallRules: firewall.slice(0, 20),
-      natRules: nat.slice(0, 10),
-      dhcpLeases: leases.slice(0, 20),
-      simpleQueues: queues.slice(0, 15),
-      arpEntries: arp.slice(0, 15),
-    };
+    result.interfaces = (await safeWrite(conn, "/interface/print")).slice(0, 20);
+    result.routes = (await safeWrite(conn, "/ip/route/print")).slice(0, 15);
+    result.firewallRules = (await safeWrite(conn, "/ip/firewall/filter/print")).slice(0, 20);
+    result.natRules = (await safeWrite(conn, "/ip/firewall/nat/print")).slice(0, 10);
+    result.dhcpLeases = (await safeWrite(conn, "/ip/dhcp-server/lease/print")).slice(0, 20);
+    result.simpleQueues = (await safeWrite(conn, "/queue/simple/print")).slice(0, 15);
+    result.arpEntries = (await safeWrite(conn, "/ip/arp/print")).slice(0, 15);
   } finally {
     await conn.close();
   }
+
+  return result;
 }
 
 export async function fetchBgpSessions(
