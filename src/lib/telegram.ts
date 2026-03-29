@@ -6,8 +6,8 @@ import {
 import { eq, desc, and } from "drizzle-orm";
 import {
   type MikroTikDevice, type DhcpLease, pingFromDevice,
-  fetchDhcpLeases, fetchSimpleQueues, fetchInterfaceNames,
-  convertDhcpToStatic, addArpBinding, addSimpleQueue,
+  fetchDhcpLeases, fetchSimpleQueues, fetchInterfaceNames, fetchArpEntries,
+  convertDhcpToStatic, addArpBinding, addSimpleQueue, toggleArp,
 } from "@/lib/mikrotik";
 
 interface TelegramUpdate {
@@ -38,7 +38,12 @@ interface AntennaSession {
   location: string;
 }
 
-const conversationState = new Map<string, { type: "provision"; session: ProvisionSession } | { type: "antenna"; session: AntennaSession }>();
+interface CutActivateSession {
+  device: MikroTikDevice;
+  clients: { queue: { id: string; name: string; target: string }; ip: string; arp: { id: string } | undefined; isDisabled: boolean }[];
+}
+
+const conversationState = new Map<string, { type: "provision"; session: ProvisionSession } | { type: "antenna"; session: AntennaSession } | { type: "cut"; session: CutActivateSession } | { type: "activate"; session: CutActivateSession }>();
 
 async function sendTelegramMessage(botToken: string, chatId: string | number, text: string, keyboard?: boolean) {
   try {
@@ -48,6 +53,7 @@ async function sendTelegramMessage(botToken: string, chatId: string | number, te
         keyboard: [
           [{ text: "📊 Estado" }, { text: "📡 Antenas" }],
           [{ text: "📋 Leases" }, { text: "⚡ Colas" }],
+          [{ text: "✂️ Cortar" }, { text: "🔌 Activar" }],
           [{ text: "🔧 Aprovisionar" }, { text: "➕ Agregar Antena" }],
         ],
         resize_keyboard: true,
@@ -80,6 +86,8 @@ const COMMAND_MAP: Record<string, string> = {
   "📡 Antenas": "/antenas",
   "📋 Leases": "/leases",
   "⚡ Colas": "/queues",
+  "✂️ Cortar": "/cortar",
+  "🔌 Activar": "/activar",
   "🔧 Aprovisionar": "/provision",
   "➕ Agregar Antena": "/addantena",
   "❌ Cancelar": "/cancel",
@@ -332,6 +340,60 @@ async function handleAntennaInput(botToken: string, chatId: string, text: string
   return false;
 }
 
+async function handleCutActivateInput(botToken: string, chatId: string, text: string) {
+  const state = conversationState.get(chatId);
+  if (!state || (state.type !== "cut" && state.type !== "activate")) return false;
+
+  const session = state.session;
+  const input = text.trim();
+
+  if (input.toLowerCase() === "/cancel") {
+    conversationState.delete(chatId);
+    await sendTelegramMessage(botToken, chatId, "❌ Operación cancelada.");
+    return true;
+  }
+
+  const num = parseInt(input, 10);
+  if (isNaN(num) || num < 1 || num > session.clients.length) {
+    await sendTelegramMessage(botToken, chatId, `Número inválido. Escribe 1-${session.clients.length} o /cancel.`);
+    return true;
+  }
+
+  const client = session.clients[num - 1];
+  if (!client.arp) {
+    conversationState.delete(chatId);
+    await sendTelegramMessage(botToken, chatId, "⚠️ Este cliente no tiene ARP asociado. No se puede modificar.");
+    return true;
+  }
+
+  const isCut = state.type === "cut";
+  const enable = !isCut;
+
+  try {
+    const ok = await toggleArp(session.device, client.arp.id, enable);
+    conversationState.delete(chatId);
+
+    if (ok) {
+      const icon = isCut ? "✂️" : "🔌";
+      const action = isCut ? "CORTADO" : "ACTIVADO";
+      await sendTelegramMessage(botToken, chatId,
+        `${icon} *Cliente ${action}*\n\n` +
+        `👤 *${client.queue.name}*\n` +
+        `📍 ${client.ip}\n\n` +
+        `${isCut ? "🔴 Servicio interrumpido" : "🟢 Servicio restaurado"}`
+      );
+    } else {
+      await sendTelegramMessage(botToken, chatId, "❌ Error al modificar el cliente. Intenta de nuevo.");
+    }
+  } catch (e) {
+    conversationState.delete(chatId);
+    console.error("CutActivate error:", e);
+    await sendTelegramMessage(botToken, chatId, "❌ Error de conexión con el router.");
+  }
+
+  return true;
+}
+
 async function processCommand(botToken: string, chatId: string, rawText: string) {
   const text = resolveCommand(rawText);
 
@@ -349,6 +411,9 @@ async function processCommand(botToken: string, chatId: string, rawText: string)
 
   const isAntenna = await handleAntennaInput(botToken, chatId, text);
   if (isAntenna) return;
+
+  const isCutActivate = await handleCutActivateInput(botToken, chatId, text);
+  if (isCutActivate) return;
 
   const command = text.trim().toLowerCase();
 
@@ -370,6 +435,8 @@ async function processCommand(botToken: string, chatId: string, rawText: string)
       `📋 Leases — Clientes DHCP`,
       `🔧 Aprovisionar — Nuevo cliente`,
       `⚡ Colas — Tráfico en vivo`,
+      `✂️ Cortar — Desconectar cliente`,
+      `🔌 Activar — Restaurar cliente`,
       ``,
       `Usa los botones de abajo 👇`,
     ].join("\n");
@@ -717,6 +784,104 @@ async function processCommand(botToken: string, chatId: string, rawText: string)
     } catch (e) {
       console.error("Queues error:", e);
       await sendTelegramMessage(botToken, chatId, "❌ Error al consultar colas.\nVerifica la conexión del router.");
+    }
+    return;
+  }
+
+  if (command === "/cortar") {
+    await sendTelegramMessage(botToken, chatId, "⏳ Consultando clientes...");
+    try {
+      const device = await getFirstOnlineDevice();
+      if (!device) {
+        await sendTelegramMessage(botToken, chatId, "⚠️ No hay dispositivos en línea.");
+        return;
+      }
+
+      const queues = await fetchSimpleQueues(device);
+      const arpEntries = await fetchArpEntries(device);
+
+      const clients = queues.map((q) => {
+        const ip = q.target.replace("/32", "");
+        const arp = arpEntries.find((a) => a.address === ip);
+        const isDisabled = arp?.disabled === "true";
+        return { queue: q, ip, arp, isDisabled };
+      }).filter((c) => !c.isDisabled);
+
+      if (clients.length === 0) {
+        await sendTelegramMessage(botToken, chatId, "📋 No hay clientes activos para cortar.");
+        return;
+      }
+
+      conversationState.set(chatId, {
+        type: "cut",
+        session: { device, clients },
+      });
+
+      let msg = `✂️ *CORTAR CLIENTE*\n`;
+      msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
+      msg += `Paso 1 — _Seleccionar cliente_\n\n`;
+
+      clients.forEach((c, i) => {
+        msg += `${i + 1}. 🟢 *${c.queue.name}*\n`;
+        msg += `   📍 ${c.ip}\n\n`;
+      });
+
+      msg += `Escribe el *número* del cliente a cortar:\n`;
+      msg += `❌ Cancelar: /cancel`;
+
+      await sendTelegramMessage(botToken, chatId, msg);
+    } catch (e) {
+      console.error("Cortar error:", e);
+      await sendTelegramMessage(botToken, chatId, "❌ Error al consultar clientes.");
+    }
+    return;
+  }
+
+  if (command === "/activar") {
+    await sendTelegramMessage(botToken, chatId, "⏳ Consultando clientes cortados...");
+    try {
+      const device = await getFirstOnlineDevice();
+      if (!device) {
+        await sendTelegramMessage(botToken, chatId, "⚠️ No hay dispositivos en línea.");
+        return;
+      }
+
+      const queues = await fetchSimpleQueues(device);
+      const arpEntries = await fetchArpEntries(device);
+
+      const clients = queues.map((q) => {
+        const ip = q.target.replace("/32", "");
+        const arp = arpEntries.find((a) => a.address === ip);
+        const isDisabled = arp?.disabled === "true";
+        return { queue: q, ip, arp, isDisabled };
+      }).filter((c) => c.isDisabled);
+
+      if (clients.length === 0) {
+        await sendTelegramMessage(botToken, chatId, "📋 No hay clientes cortados para activar.");
+        return;
+      }
+
+      conversationState.set(chatId, {
+        type: "activate",
+        session: { device, clients },
+      });
+
+      let msg = `🔌 *ACTIVAR CLIENTE*\n`;
+      msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
+      msg += `Paso 1 — _Seleccionar cliente_\n\n`;
+
+      clients.forEach((c, i) => {
+        msg += `${i + 1}. 🔴 *${c.queue.name}*\n`;
+        msg += `   📍 ${c.ip}\n\n`;
+      });
+
+      msg += `Escribe el *número* del cliente a activar:\n`;
+      msg += `❌ Cancelar: /cancel`;
+
+      await sendTelegramMessage(botToken, chatId, msg);
+    } catch (e) {
+      console.error("Activar error:", e);
+      await sendTelegramMessage(botToken, chatId, "❌ Error al consultar clientes.");
     }
     return;
   }
