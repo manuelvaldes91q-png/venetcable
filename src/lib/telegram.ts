@@ -1,7 +1,7 @@
 import { db } from "@/db";
 import {
   telegramConfig, telegramUsers, telegramAlertHistory,
-  devices, systemMetrics, latencyMetrics, antennas,
+  devices, systemMetrics, latencyMetrics, antennas, interfaceMetrics,
 } from "@/db/schema";
 import { eq, desc, and } from "drizzle-orm";
 import {
@@ -369,34 +369,77 @@ Usa los botones de abajo para navegar:
 
   if (command === "/status") {
     const allDevices = await db.select().from(devices);
-    const lines: string[] = [];
+    if (allDevices.length === 0) {
+      await sendTelegramMessage(botToken, chatId, "No hay dispositivos configurados.");
+      return;
+    }
+
+    const online = allDevices.filter((d) => d.status === "online").length;
+    const offline = allDevices.filter((d) => d.status === "offline").length;
+
+    let msg = `📊 *RESUMEN DE RED*\n`;
+    msg += `${"─".repeat(24)}\n`;
+    msg += `🟢 En línea: ${online}  |  🔴 Caídos: ${offline}\n\n`;
 
     for (const device of allDevices) {
-      const [latestSystem] = await db
+      const icon = device.status === "online" ? "🟢" : "🔴";
+      msg += `${icon} *${device.name}*\n`;
+
+      const [sys] = await db
         .select().from(systemMetrics)
         .where(eq(systemMetrics.deviceId, device.id))
         .orderBy(desc(systemMetrics.timestamp)).limit(1);
 
-      const [latestLatency] = await db
+      const [lat] = await db
         .select().from(latencyMetrics)
         .where(eq(latencyMetrics.deviceId, device.id))
         .orderBy(desc(latencyMetrics.timestamp)).limit(1);
 
-      const icon = device.status === "online" ? "🟢" : device.status === "offline" ? "🔴" : "🟡";
-      let line = `${icon} *${device.name}* (${device.host}) — ${device.status.toUpperCase()}`;
+      if (sys) {
+        const cpuBar = (sys.cpuLoad ?? 0) > 80 ? "🔴" : (sys.cpuLoad ?? 0) > 50 ? "🟡" : "🟢";
+        const memUsed = sys.totalMemory && sys.freeMemory
+          ? (((sys.totalMemory - sys.freeMemory) / sys.totalMemory) * 100).toFixed(0) : "?";
+        msg += `   CPU: ${cpuBar} ${sys.cpuLoad ?? "?"}%\n`;
+        msg += `   RAM: ${memUsed}%\n`;
+        msg += `   Uptime: ${sys.uptime || "?"}\n`;
+      }
 
-      if (latestSystem) {
-        const memUsed = latestSystem.totalMemory && latestSystem.freeMemory
-          ? (((latestSystem.totalMemory - latestSystem.freeMemory) / latestSystem.totalMemory) * 100).toFixed(0) : "?";
-        line += `\n   CPU: ${latestSystem.cpuLoad ?? "?"}% | RAM: ${memUsed}% | Up: ${latestSystem.uptime || "?"}`;
+      if (lat) {
+        const latIcon = (lat.rttAvg ?? 0) > 150 ? "🔴" : (lat.rttAvg ?? 0) > 80 ? "🟡" : "🟢";
+        msg += `   Ping: ${latIcon} ${lat.rttAvg ?? "?"}ms\n`;
+        msg += `   Pérdida: ${lat.packetLoss ?? 0}%\n`;
       }
-      if (latestLatency) {
-        line += `\n   Ping: ${latestLatency.rttAvg ?? "?"}ms | Pérdida: ${latestLatency.packetLoss ?? 0}%`;
+
+      if (device.status === "online" && device.wanInterfaceName) {
+        const wanName = device.wanInterfaceName;
+        const wanIfaces = await db
+          .select()
+          .from(interfaceMetrics)
+          .where(eq(interfaceMetrics.deviceId, device.id))
+          .orderBy(desc(interfaceMetrics.timestamp))
+          .limit(10);
+
+        const wanEntries = wanIfaces.filter((i) => i.interfaceName === wanName);
+
+        if (wanEntries.length >= 2) {
+          const t0 = wanEntries[0].timestamp;
+          const t1 = wanEntries[1].timestamp;
+          if (t0 && t1) {
+            const dt = Math.max(1, (t0.getTime() - t1.getTime()) / 1000);
+            const rxRate = Math.max(0, ((wanEntries[0].rxBytes ?? 0) - (wanEntries[1].rxBytes ?? 0)) * 8 / dt);
+            const txRate = Math.max(0, ((wanEntries[0].txBytes ?? 0) - (wanEntries[1].txBytes ?? 0)) * 8 / dt);
+            const fmtBps = (bps: number) => bps > 1_000_000 ? `${(bps / 1_000_000).toFixed(1)} Mbps` : bps > 1_000 ? `${(bps / 1_000).toFixed(0)} Kbps` : `${bps} bps`;
+            msg += `   WAN (${wanName}):\n`;
+            msg += `      ⬇️ Descarga: ${fmtBps(rxRate)}\n`;
+            msg += `      ⬆️ Subida: ${fmtBps(txRate)}\n`;
+          }
+        }
       }
-      lines.push(line);
+
+      msg += `\n`;
     }
 
-    await sendTelegramMessage(botToken, chatId, `📊 *Estado de la Red*\n\n${lines.length > 0 ? lines.join("\n\n") : "Sin dispositivos."}`);
+    await sendTelegramMessage(botToken, chatId, msg);
     return;
   }
 
