@@ -2,12 +2,13 @@ const ANALYZE_URL = "http://localhost:7990/api/ai/agent";
 const POLL_URL = "http://localhost:7990/api/telegram/poll";
 const DEVICES_URL = "http://localhost:7990/api/devices";
 const METRICS_URL = "http://localhost:7990/api/metrics";
-const POLL_INTERVAL = 10000;
-const ANALYSIS_INTERVAL = 900000;
-const METRICS_INTERVAL = 60000;
+const POLL_INTERVAL = 15000;
+const ANALYSIS_INTERVAL = 1800000;
+const METRICS_INTERVAL = 120000;
 
 let isPolling = false;
 let isCollecting = false;
+let isAnalyzing = false;
 
 async function pollTelegram() {
   if (isPolling) return;
@@ -42,6 +43,7 @@ async function collectMetrics() {
           signal: AbortSignal.timeout(30000),
         });
       } catch {}
+      await new Promise((r) => setTimeout(r, 2000));
     }
   } catch {} finally {
     isCollecting = false;
@@ -49,15 +51,19 @@ async function collectMetrics() {
 }
 
 async function runAnalysis() {
+  if (isAnalyzing) return;
+  isAnalyzing = true;
   try {
-    const res = await fetch(ANALYZE_URL, { method: "POST", signal: AbortSignal.timeout(60000) });
+    const res = await fetch(ANALYZE_URL, { method: "POST", signal: AbortSignal.timeout(120000) });
     if (res.ok) {
       const data = await res.json();
       if (data.hasIssues) {
         console.log("AI found issues, sent to Telegram");
       }
     }
-  } catch {}
+  } catch {} finally {
+    isAnalyzing = false;
+  }
 }
 
 async function waitForApp() {
@@ -84,9 +90,9 @@ async function start() {
     process.exit(1);
   }
 
-  console.log("- Telegram polling: every 10s");
-  console.log("- Metrics collection: every 60s");
-  console.log("- Network analysis: every 10min");
+  console.log("- Telegram polling: every 15s");
+  console.log("- Metrics collection: every 2min");
+  console.log("- Network analysis: every 30min");
 
   pollTelegram();
   collectMetrics();
