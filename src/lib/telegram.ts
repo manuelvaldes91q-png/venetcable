@@ -7,7 +7,7 @@ import { eq, desc, and } from "drizzle-orm";
 import {
   type MikroTikDevice, type DhcpLease, pingFromDevice,
   fetchDhcpLeases, fetchSimpleQueues, fetchInterfaceNames, fetchArpEntries,
-  convertDhcpToStatic, addArpBinding, addSimpleQueue, toggleArp,
+  convertDhcpToStatic, addArpBinding, addSimpleQueue, toggleArp, toggleQueue,
 } from "@/lib/mikrotik";
 
 interface TelegramUpdate {
@@ -370,21 +370,19 @@ async function handleCutActivateInput(botToken: string, chatId: string, text: st
   const enable = !isCut;
 
   try {
-    const ok = await toggleArp(session.device, client.arp.id, enable);
+    await toggleArp(session.device, client.arp.id, enable);
+    await toggleQueue(session.device, client.queue.id, enable);
     conversationState.delete(chatId);
 
-    if (ok) {
-      const icon = isCut ? "✂️" : "🔌";
-      const action = isCut ? "CORTADO" : "ACTIVADO";
-      await sendTelegramMessage(botToken, chatId,
-        `${icon} *Cliente ${action}*\n\n` +
-        `👤 *${client.queue.name}*\n` +
-        `📍 ${client.ip}\n\n` +
-        `${isCut ? "🔴 Servicio interrumpido" : "🟢 Servicio restaurado"}`
-      );
-    } else {
-      await sendTelegramMessage(botToken, chatId, "❌ Error al modificar el cliente. Intenta de nuevo.");
-    }
+    const icon = isCut ? "✂️" : "🔌";
+    const action = isCut ? "CORTADO" : "ACTIVADO";
+    await sendTelegramMessage(botToken, chatId,
+      `${icon} *Cliente ${action}*\n\n` +
+      `👤 *${client.queue.name}*\n` +
+      `📍 ${client.ip}\n` +
+      `${isCut ? "🔴 ARP desactivado\n🔴 Cola desactivada" : "🟢 ARP activado\n🟢 Cola activada"}\n\n` +
+      `${isCut ? "❌ Servicio interrumpido" : "✅ Servicio restaurado"}`
+    );
   } catch (e) {
     conversationState.delete(chatId);
     console.error("CutActivate error:", e);
