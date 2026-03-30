@@ -28,6 +28,12 @@ function understandIntent(input: string): { intent: string; topic: string } {
 
   if (q.match(/analiza|revisa|diagnostica|chequea|verifica|como esta|estado de/)) return { intent: "analyze", topic: "full" };
 
+  if (q.match(/cuantos? puerto|puertos? conectad|puertos? activ|puertos? up|cuantas? puerto/)) return { intent: "action", topic: "check_ports" };
+  if (q.match(/ver puerto|estado puerto|puertos/)) return { intent: "action", topic: "check_ports" };
+  if (q.match(/lease|leases|clientes dhcp|clientes conectad/)) return { intent: "action", topic: "check_leases" };
+  if (q.match(/agregar antena|nueva antena|crear antena/)) return { intent: "action", topic: "add_antenna" };
+  if (q.match(/backup|respaldo|copia de seguridad|guardar configuracion|exportar config/)) return { intent: "action", topic: "backup" };
+
   if (q.match(/firewall|reglas|filtro|bloquear|permitir|puertos abiertos|proteccion|seguridad/)) return { intent: "analyze", topic: "firewall" };
   if (q.match(/cpu|procesador|carga|sobrecarga|lento|rendimiento|velocidad del router/)) return { intent: "analyze", topic: "performance" };
   if (q.match(/ram|memoria|almacenamiento/)) return { intent: "analyze", topic: "memory" };

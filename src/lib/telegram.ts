@@ -67,11 +67,9 @@ async function sendTelegramMessage(botToken: string, chatId: string | number, te
       body.reply_markup = {
         keyboard: [
           [{ text: "📊 Estado" }, { text: "🖥 Dispositivos" }],
-          [{ text: "📡 Antenas" }, { text: "🔌 Puertos" }],
-          [{ text: "📋 Leases" }, { text: "⚡ Colas" }],
+          [{ text: "📡 Antenas" }, { text: "⚡ Colas" }],
           [{ text: "✂️ Cortar" }, { text: "🔌 Activar" }],
-          [{ text: "🔧 Aprovisionar" }, { text: "➕ Agregar Antena" }],
-          [{ text: "📦 Backup" }, { text: "📋 Logs" }],
+          [{ text: "🔧 Aprovisionar" }, { text: "📦 Backup" }],
           [{ text: "🔄 Reiniciar" }, { text: "🖥 VPS" }],
           [{ text: "🤖 IA" }],
         ],
@@ -104,18 +102,14 @@ const COMMAND_MAP: Record<string, string> = {
   "📊 Estado": "/status",
   "🖥 Dispositivos": "/devices",
   "📡 Antenas": "/antenas",
-  "🔌 Puertos": "/puertos",
-  "📋 Leases": "/leases",
   "⚡ Colas": "/queues",
   "✂️ Cortar": "/cortar",
   "🔌 Activar": "/activar",
   "🔧 Aprovisionar": "/provision",
-  "➕ Agregar Antena": "/addantena",
   "🖥 VPS": "/vps",
   "🤖 IA": "/ai",
   "📦 Backup": "/backup",
   "🔄 Reiniciar": "/reiniciar",
-  "📋 Logs": "/logs",
   "❌ Cancelar": "/cancel",
 };
 
@@ -1114,6 +1108,61 @@ async function processCommand(botToken: string, chatId: string, rawText: string)
             const lines = backups.map((b) => `📁 ${b.name} — ${b.size} bytes — ${b.date}`);
             await sendTelegramMessage(botToken, chatId, `📋 *Backups en ${device.name}*\n\n${lines.join("\n")}`);
           }
+          return;
+        }
+
+        if (action === "check_ports") {
+          const interfaces = await fetchInterfaceTraffic(device);
+          const physical = interfaces.filter((i) => (i.name || "").startsWith("ether") || (i.name || "").startsWith("sfp"));
+          const connected = physical.filter((i) => i.status === "running");
+          const disconnected = physical.filter((i) => i.status !== "running");
+
+          let msg = `🔌 *Puertos de ${device.name}*\n━━━━━━━━━━━━━━━━━━━━━\n`;
+          msg += `🟢 Conectados: *${connected.length}*  |  🔴 Desconectados: *${disconnected.length}*\n\n`;
+          if (connected.length > 0) {
+            msg += `🟢 Conectados:\n`;
+            connected.forEach((p) => { msg += `  ✅ ${p.name}${p.comment ? ` (${p.comment})` : ""}\n`; });
+          }
+          if (disconnected.length > 0) {
+            msg += `\n🔴 Desconectados:\n`;
+            disconnected.forEach((p) => { msg += `  ❌ ${p.name}\n`; });
+          }
+          await sendTelegramMessage(botToken, chatId, msg);
+          return;
+        }
+
+        if (action === "check_leases") {
+          const allLeases = await fetchDhcpLeases(device);
+          const active = allLeases.filter((l) => l.status === "bound");
+          if (active.length === 0) {
+            await sendTelegramMessage(botToken, chatId, "📋 No hay clientes conectados por DHCP.");
+          } else {
+            let msg = `📋 *Clientes conectados — ${device.name}* (${active.length})\n━━━━━━━━━━━━━━━━━━━━━\n\n`;
+            active.forEach((l, i) => {
+              const type = l.dynamic ? "DHCP" : "Estático";
+              msg += `${i + 1}. 🟢 *${l.address}* — ${l.hostName || "sin nombre"}\n   ${type} | ${l.macAddress}\n\n`;
+            });
+            await sendTelegramMessage(botToken, chatId, msg);
+          }
+          return;
+        }
+
+        if (action === "add_antenna") {
+          const allDevices = await db.select().from(devices);
+          conversationState.set(chatId, {
+            type: "antenna",
+            session: {
+              step: "enter_name",
+              name: "",
+              ip: "",
+              deviceId: null,
+              deviceList: allDevices,
+              location: "",
+            },
+          });
+          await sendTelegramMessage(botToken, chatId,
+            `➕ *AGREGAR ANTENA*\n━━━━━━━━━━━━━━━━━━━━━\nPaso 1 de 4 — _Nombre_\n\nEscribe el nombre de la antena:\n📌 Ejemplo: Sector Norte, Torre A\n\nCancelar: /cancel`
+          );
           return;
         }
 
