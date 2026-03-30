@@ -1,9 +1,12 @@
+import { mikrotikKnowledge, searchKnowledge, type KnowledgeEntry } from "@/lib/mikrotik-knowledge";
+
 interface Finding {
   severity: "critical" | "warning" | "info";
   category: string;
   issue: string;
   solution: string;
   command?: string;
+  knowledge?: KnowledgeEntry;
 }
 
 export type { Finding };
@@ -488,36 +491,103 @@ export function analyzeMikroTik(config: Config): Finding[] {
 
 export function formatFindings(findings: Finding[]): string {
   if (findings.length === 0) {
-    return `✅ *RED EN BUEN ESTADO*\n\nNo se detectaron problemas.\nTodas las verificaciones pasaron correctamente.`;
+    return `✅ *¡Excelente! Tu red está en buen estado.*\n\nRevisé todo tu MikroTik y no encontré problemas. Las reglas de firewall están bien, las interfaces funcionan correctamente, y el sistema está estable.\n\nSigue así. Te recomiendo volver a ejecutar este análisis semanalmente.`;
   }
 
   const critical = findings.filter((f) => f.severity === "critical");
   const warnings = findings.filter((f) => f.severity === "warning");
   const info = findings.filter((f) => f.severity === "info");
 
-  let msg = `🔍 *ANÁLISIS COMPLETO*\n`;
+  let msg = `🔍 *Reporte de Análisis*\n`;
   msg += `━━━━━━━━━━━━━━━━━━━━━\n`;
-  msg += `🔴 Críticos: *${critical.length}*  `;
-  msg += `🟡 Advertencias: *${warnings.length}*  `;
-  msg += `ℹ️ Info: *${info.length}*\n`;
+
+  if (critical.length > 0) {
+    msg += `⚠️ Encontré *${critical.length} problema${critical.length > 1 ? "s" : ""} crítico${critical.length > 1 ? "s" : ""}* que necesita${critical.length === 1 ? "" : "n"} atención inmediata.\n`;
+  }
+  if (warnings.length > 0) {
+    msg += `💡 También hay *${warnings.length} recomendaci${warnings.length > 1 ? "ones" : "ón"}* para mejorar tu red.\n`;
+  }
   msg += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
 
-  const categories = [...new Set(findings.map((f) => f.category))];
-
-  for (const cat of categories) {
-    const catFindings = findings.filter((f) => f.category === cat);
-    msg += `${cat}\n`;
-    for (const f of catFindings) {
-      const icon = f.severity === "critical" ? "🔴" : f.severity === "warning" ? "🟡" : "ℹ️";
-      msg += `${icon} *${f.issue}*\n`;
-      msg += `   💡 ${f.solution}\n`;
-      if (f.command) {
-        msg += `   📋 Copia y pega en terminal:\n`;
-        msg += `\`${f.command}\`\n`;
-      }
-      msg += `\n`;
+  const allKnowledge = new Map<string, KnowledgeEntry>();
+  for (const f of findings) {
+    const matches = searchKnowledge(f.issue + " " + f.solution);
+    if (matches.length > 0 && !allKnowledge.has(matches[0].title)) {
+      allKnowledge.set(matches[0].title, matches[0]);
     }
   }
 
+  let findingIndex = 0;
+  for (const f of findings) {
+    findingIndex++;
+    const icon = f.severity === "critical" ? "🔴" : f.severity === "warning" ? "🟡" : "ℹ️";
+
+    const knowledge = searchKnowledge(f.issue + " " + f.solution)[0];
+
+    msg += `${icon} *${findingIndex}. ${f.issue}*\n\n`;
+
+    if (knowledge) {
+      msg += `📖 *¿Qué significa esto?*\n`;
+      msg += `${knowledge.explanation}\n\n`;
+
+      msg += `🔧 *¿Cómo lo soluciono?*\n`;
+      msg += `${knowledge.solution}\n\n`;
+
+      if (knowledge.commands.length > 0) {
+        msg += `📋 *Comandos para copiar y pegar en tu terminal:*\n`;
+        knowledge.commands.forEach((cmd) => {
+          msg += `\`${cmd}\`\n`;
+        });
+        msg += `\n`;
+      }
+
+      if (knowledge.tips.length > 0) {
+        msg += `💡 *Consejos:*\n`;
+        knowledge.tips.forEach((tip) => {
+          msg += `• ${tip}\n`;
+        });
+        msg += `\n`;
+      }
+    } else {
+      msg += `💡 ${f.solution}\n`;
+      if (f.command) {
+        msg += `📋 \`${f.command}\`\n`;
+      }
+      msg += `\n`;
+    }
+
+    msg += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
+  }
+
+  if (critical.length > 0) {
+    msg += `⚡ *Prioridad:* Corrige los problemas críticos primero. Estos representan riesgos de seguridad o fallas inminentes.\n\n`;
+  }
+
+  msg += `🔄 Ejecuta este análisis regularmente para mantener tu red saludable.`;
+
   return msg;
+}
+
+export function answerQuestion(question: string, config: Config): string {
+  const findings = analyzeMikroTik(config);
+  const knowledge = searchKnowledge(question);
+
+  if (knowledge.length > 0) {
+    const top = knowledge[0];
+    let msg = `🤖 *${top.title}*\n\n`;
+    msg += `📖 ${top.explanation}\n\n`;
+    msg += `🔧 *Solución:*\n${top.solution}\n\n`;
+    if (top.commands.length > 0) {
+      msg += `📋 *Comandos:*\n`;
+      top.commands.forEach((cmd) => { msg += `\`${cmd}\`\n`; });
+      msg += `\n`;
+    }
+    if (top.tips.length > 0) {
+      msg += `💡 *Consejos:*\n`;
+      top.tips.forEach((tip) => { msg += `• ${tip}\n`; });
+    }
+    return msg;
+  }
+
+  return formatFindings(findings);
 }

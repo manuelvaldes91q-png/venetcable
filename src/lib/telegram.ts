@@ -10,7 +10,7 @@ import {
   fetchFullConfig, fetchSystemResources,
   convertDhcpToStatic, addArpBinding, addSimpleQueue, toggleArp, toggleQueue,
 } from "@/lib/mikrotik";
-import { analyzeMikroTik, formatFindings } from "@/lib/network-analyzer";
+import { analyzeMikroTik, formatFindings, answerQuestion } from "@/lib/network-analyzer";
 
 interface TelegramUpdate {
   update_id: number;
@@ -1033,8 +1033,14 @@ async function processCommand(botToken: string, chatId: string, rawText: string)
       await sendTelegramMessage(botToken, chatId, "⏳ Analizando configuración del MikroTik...");
 
       const config = await fetchFullConfig(device);
-      const findings = analyzeMikroTik(config);
-      const response = formatFindings(findings);
+      let response: string;
+
+      if (question) {
+        response = answerQuestion(question, config);
+      } else {
+        const findings = analyzeMikroTik(config);
+        response = formatFindings(findings);
+      }
 
       await sendTelegramMessage(botToken, chatId, response);
     } catch (e) {
