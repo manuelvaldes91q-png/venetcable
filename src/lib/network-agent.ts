@@ -17,6 +17,15 @@ function understandIntent(input: string): { intent: string; topic: string } {
   if (q.match(/quien eres|que eres|como te llamas|tu nombre/)) return { intent: "identity", topic: "" };
   if (q.match(/ayuda|help|que puedes hacer|opciones|comandos/)) return { intent: "help", topic: "" };
 
+  // Acciones
+  if (q.match(/backup|respaldo|copia de seguridad|guardar configuracion|exportar config/)) return { intent: "action", topic: "backup" };
+  if (q.match(/reiniciar|reboot|reinicio|reset router/)) return { intent: "action", topic: "reboot" };
+  if (q.match(/reset firewall|reiniciar firewall|firewall basico|firewall por defecto/)) return { intent: "action", topic: "reset_firewall" };
+  if (q.match(/habilitar colas|activar colas|activar todas|habilitar todas/)) return { intent: "action", topic: "enable_queues" };
+  if (q.match(/logs|ver log|ver registros|errores recientes/)) return { intent: "action", topic: "logs" };
+  if (q.match(/ejecutar|correr comando|run/)) return { intent: "action", topic: "run_command" };
+  if (q.match(/listar backup|ver backup|backups disponibles/)) return { intent: "action", topic: "list_backups" };
+
   if (q.match(/analiza|revisa|diagnostica|chequea|verifica|como esta|estado de/)) return { intent: "analyze", topic: "full" };
 
   if (q.match(/firewall|reglas|filtro|bloquear|permitir|puertos abiertos|proteccion|seguridad/)) return { intent: "analyze", topic: "firewall" };
@@ -60,7 +69,7 @@ function getIdentity(): string {
 }
 
 function getHelp(): string {
-  return `📋 *¿Qué puedo hacer por ti?*\n\n🔍 *Análisis:*\n• "Analiza mi red" — diagnóstico completo\n• "Revisa el firewall" — solo seguridad\n• "¿Por qué está lento?" — rendimiento\n• "Revisa las colas" — clientes y velocidad\n\n🔧 *Configuración:*\n• "Necesito VPN" — acceso remoto seguro\n• "¿Cómo hago backup?" — respaldo\n• "Configura DNS" — resolución de nombres\n• "Balanceo de WANs" — dos internet\n\n📡 *ISP:*\n• "Clientes sin cola" — sin límite\n• "DHCP agotado" — sin IPs\n• "Colas desactivadas" — pendientes\n\n🔒 *Seguridad:*\n• "Puertos abiertos" — vulnerabilidades\n• "¿SSH seguro?" — acceso remoto\n• "DNS abierto" — ataques DDoS\n\nSimplemente escribe tu pregunta en lenguaje natural.`;
+  return `📋 *¿Qué puedo hacer por ti?*\n\n🔍 *Análisis:*\n• "Analiza mi red"\n• "Revisa el firewall"\n• "¿Por qué está lento?"\n• "Revisa las colas"\n\n🔧 *Acciones:*\n• "Haz un backup"\n• "Reiniciar router"\n• "Resetear firewall"\n• "Activar todas las colas"\n• "Ver logs"\n• "Ejecutar comando"\n• "Ver backups"\n\n🔧 *Configuración:*\n• "Necesito VPN"\n• "Configura DNS"\n• "Balanceo de WANs"\n\n🔒 *Seguridad:*\n• "Puertos abiertos"\n• "SSH seguro?"\n• "DNS abierto"\n\nSimplemente escribe lo que necesitas.`;
 }
 
 function analyzeByTopic(topic: string, ctx: Context): string {
@@ -161,6 +170,9 @@ export function processMessage(input: string, ctx: Context): string {
 
     case "thanks":
       return `😊 ¡De nada! Estoy aquí para lo que necesites.\n\nSi tienes más dudas o quieres que revise algo, solo pregúntame.`;
+
+    case "action":
+      return `ACTION:${topic}`;
 
     case "analyze": {
       const response = analyzeByTopic(topic, ctx);

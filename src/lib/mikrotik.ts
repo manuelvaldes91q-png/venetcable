@@ -742,3 +742,143 @@ export async function deleteSimpleQueue(
     await conn.close();
   }
 }
+
+export async function rebootDevice(device: MikroTikDevice): Promise<{ success: boolean; message: string }> {
+  const conn = await connectToDevice(device);
+  try {
+    await conn.write("/system/reboot");
+    return { success: true, message: "Reinicio enviado. El router se reiniciará en unos segundos." };
+  } catch (e) {
+    return { success: false, message: `Error al reiniciar: ${e}` };
+  } finally {
+    await conn.close();
+  }
+}
+
+export async function exportConfig(device: MikroTikDevice): Promise<{ success: boolean; content: string; message: string }> {
+  const conn = await connectToDevice(device);
+  try {
+    const response = await conn.write("/export");
+    const content = response.map((line: Record<string, string>) => line[".value"] || Object.values(line)[0] || "").join("\n");
+    return { success: true, content, message: "Configuración exportada correctamente." };
+  } catch (e) {
+    return { success: false, content: "", message: `Error al exportar: ${e}` };
+  } finally {
+    await conn.close();
+  }
+}
+
+export async function backupConfig(device: MikroTikDevice, name: string): Promise<{ success: boolean; message: string }> {
+  const conn = await connectToDevice(device);
+  try {
+    const date = new Date().toISOString().split("T")[0];
+    const backupName = `${name}-${date}`;
+
+    await conn.write(["/system/backup/save", `=name=${backupName}`]);
+    await conn.write(["/export", `=file=${backupName}`]);
+
+    return { success: true, message: `Backup creado: ${backupName}.backup y ${backupName}.rsc` };
+  } catch (e) {
+    return { success: false, message: `Error al crear backup: ${e}` };
+  } finally {
+    await conn.close();
+  }
+}
+
+export async function enableDisableInterface(
+  device: MikroTikDevice,
+  interfaceName: string,
+  enable: boolean
+): Promise<{ success: boolean; message: string }> {
+  const conn = await connectToDevice(device);
+  try {
+    await conn.write([
+      "/interface/set",
+      `=.id=${interfaceName}`,
+      `=disabled=${enable ? "no" : "yes"}`,
+    ]);
+    return { success: true, message: `Interfaz ${interfaceName} ${enable ? "habilitada" : "deshabilitada"}.` };
+  } catch (e) {
+    return { success: false, message: `Error: ${e}` };
+  } finally {
+    await conn.close();
+  }
+}
+
+export async function resetFirewall(device: MikroTikDevice): Promise<{ success: boolean; message: string }> {
+  const conn = await connectToDevice(device);
+  try {
+    await conn.write("/ip/firewall/filter/remove [find]");
+    await conn.write(["/ip/firewall/filter/add", "=chain=input", "=connection-state=established,related", "=action=accept", "=comment=FastTrack"]);
+    await conn.write(["/ip/firewall/filter/add", "=chain=forward", "=connection-state=established,related", "=action=fasttrack-connection", "=comment=FastTrack"]);
+    await conn.write(["/ip/firewall/filter/add", "=chain=input", "=action=drop", "=comment=Drop final"]);
+    return { success: true, message: "Firewall reiniciado con reglas básicas de protección." };
+  } catch (e) {
+    return { success: false, message: `Error al resetear firewall: ${e}` };
+  } finally {
+    await conn.close();
+  }
+}
+
+export async function runCommand(device: MikroTikDevice, command: string): Promise<{ success: boolean; output: string }> {
+  const conn = await connectToDevice(device);
+  try {
+    const response = await conn.write(command);
+    const output = response.map((line: Record<string, string>) =>
+      Object.entries(line).map(([k, v]) => `${k}=${v}`).join(" ")
+    ).join("\n");
+    return { success: true, output: output || "Comando ejecutado correctamente." };
+  } catch (e) {
+    return { success: false, output: `Error: ${e}` };
+  } finally {
+    await conn.close();
+  }
+}
+
+export async function getSystemLogs(device: MikroTikDevice, count = 20): Promise<string> {
+  const conn = await connectToDevice(device);
+  try {
+    const response = await conn.write(["/log/print", `=count=${count}`]);
+    return response.map((line: Record<string, string>) =>
+      `[${line.time || "?"}] ${line.topics || ""}: ${line.message || ""}`
+    ).join("\n");
+  } catch {
+    return "Error al obtener logs.";
+  } finally {
+    await conn.close();
+  }
+}
+
+export async function listBackups(device: MikroTikDevice): Promise<{ name: string; size: string; date: string }[]> {
+  const conn = await connectToDevice(device);
+  try {
+    const response = await conn.write("/file/print");
+    return response
+      .filter((f: Record<string, string>) => {
+        const name = f.name || "";
+        return name.endsWith(".backup") || name.endsWith(".rsc");
+      })
+      .map((f: Record<string, string>) => ({
+        name: f.name || "",
+        size: f.size || "0",
+        date: f["creation-time"] || "",
+      }));
+  } catch {
+    return [];
+  } finally {
+    await conn.close();
+  }
+}
+
+export async function enableAllQueues(device: MikroTikDevice): Promise<{ success: boolean; count: number }> {
+  const conn = await connectToDevice(device);
+  try {
+    await conn.write("/queue/simple/enable [find]");
+    const queues = await conn.write("/queue/simple/print");
+    return { success: true, count: queues.length };
+  } catch {
+    return { success: false, count: 0 };
+  } finally {
+    await conn.close();
+  }
+}

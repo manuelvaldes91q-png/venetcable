@@ -8,6 +8,7 @@ import {
   type MikroTikDevice, type DhcpLease, pingFromDevice,
   fetchDhcpLeases, fetchSimpleQueues, fetchInterfaceNames, fetchArpEntries, fetchInterfaceTraffic,
   fetchFullConfig, fetchSystemResources,
+  backupConfig, rebootDevice, resetFirewall, enableAllQueues, getSystemLogs, listBackups,
   convertDhcpToStatic, addArpBinding, addSimpleQueue, toggleArp, toggleQueue,
 } from "@/lib/mikrotik";
 import { analyzeMikroTik } from "@/lib/network-analyzer";
@@ -70,7 +71,9 @@ async function sendTelegramMessage(botToken: string, chatId: string | number, te
           [{ text: "📋 Leases" }, { text: "⚡ Colas" }],
           [{ text: "✂️ Cortar" }, { text: "🔌 Activar" }],
           [{ text: "🔧 Aprovisionar" }, { text: "➕ Agregar Antena" }],
-          [{ text: "🖥 VPS" }, { text: "🤖 IA" }],
+          [{ text: "📦 Backup" }, { text: "📋 Logs" }],
+          [{ text: "🔄 Reiniciar" }, { text: "🖥 VPS" }],
+          [{ text: "🤖 IA" }],
         ],
         resize_keyboard: true,
         one_time_keyboard: false,
@@ -110,6 +113,9 @@ const COMMAND_MAP: Record<string, string> = {
   "➕ Agregar Antena": "/addantena",
   "🖥 VPS": "/vps",
   "🤖 IA": "/ai",
+  "📦 Backup": "/backup",
+  "🔄 Reiniciar": "/reiniciar",
+  "📋 Logs": "/logs",
   "❌ Cancelar": "/cancel",
 };
 
@@ -455,8 +461,11 @@ async function processCommand(botToken: string, chatId: string, rawText: string)
       `🔌 Activar — Restaurar cliente`,
       `➕ Agregar — Nueva antena`,
       ``,
-      `━━━ 🤖 *IA y VPS* ━━━`,
-      `🤖 Preguntar — /ai tu pregunta`,
+      `━━━ 🛠 *Acciones* ━━━`,
+      `📦 Backup — Crear respaldo`,
+      `🔄 Reiniciar — Reiniciar router`,
+      `📋 Logs — Ver registros`,
+      `🤖 IA — Analizar con agente`,
       `🖥 VPS — Estado del servidor`,
       ``,
       `Usa los botones de abajo 👇`,
@@ -1038,7 +1047,7 @@ async function processCommand(botToken: string, chatId: string, rawText: string)
         return;
       }
 
-      await sendTelegramMessage(botToken, chatId, "⏳ Analizando...");
+      await sendTelegramMessage(botToken, chatId, "⏳ Procesando...");
 
       const config = await fetchFullConfig(device);
       const findings = analyzeMikroTik(config);
@@ -1048,10 +1057,149 @@ async function processCommand(botToken: string, chatId: string, rawText: string)
         deviceName: device.name,
       });
 
+      if (response.startsWith("ACTION:")) {
+        const action = response.replace("ACTION:", "");
+
+        if (action === "backup") {
+          const result = await backupConfig(device, device.name);
+          await sendTelegramMessage(botToken, chatId,
+            result.success
+              ? `✅ *Backup creado exitosamente*\n\n${result.message}\n\nLos archivos están guardados en el router. Puedes descargarlos por Winbox o FTP.`
+              : `❌ ${result.message}`
+          );
+          return;
+        }
+
+        if (action === "reboot") {
+          await sendTelegramMessage(botToken, chatId,
+            `⚠️ *¿Estás seguro que quieres reiniciar ${device.name}?*\n\n` +
+            `El router se apagará y volverá en ~1-2 minutos.\n` +
+            `Los clientes perderán conexión momentáneamente.\n\n` +
+            `Para confirmar escribe: /confirmar_reiniciar`
+          );
+          return;
+        }
+
+        if (action === "reset_firewall") {
+          const result = await resetFirewall(device);
+          await sendTelegramMessage(botToken, chatId,
+            result.success
+              ? `✅ *Firewall reiniciado*\n\n${result.message}\n\nReglas aplicadas:\n• Established → accept\n• FastTrack → forward\n• Drop final → input`
+              : `❌ ${result.message}`
+          );
+          return;
+        }
+
+        if (action === "enable_queues") {
+          const result = await enableAllQueues(device);
+          await sendTelegramMessage(botToken, chatId,
+            result.success
+              ? `✅ *${result.count} colas activadas*\n\nTodos los clientes ahora tienen sus límites de velocidad activos.`
+              : `❌ Error al activar colas`
+          );
+          return;
+        }
+
+        if (action === "logs") {
+          const logs = await getSystemLogs(device, 15);
+          await sendTelegramMessage(botToken, chatId, `📋 *Últimos logs de ${device.name}*\n\n\`${logs}\``);
+          return;
+        }
+
+        if (action === "list_backups") {
+          const backups = await listBackups(device);
+          if (backups.length === 0) {
+            await sendTelegramMessage(botToken, chatId, "📋 No hay backups guardados en el router.");
+          } else {
+            const lines = backups.map((b) => `📁 ${b.name} — ${b.size} bytes — ${b.date}`);
+            await sendTelegramMessage(botToken, chatId, `📋 *Backups en ${device.name}*\n\n${lines.join("\n")}`);
+          }
+          return;
+        }
+
+        await sendTelegramMessage(botToken, chatId, "Acción no reconocida.");
+        return;
+      }
+
       await sendTelegramMessage(botToken, chatId, response);
     } catch (e) {
       console.error("Analysis error:", e);
       await sendTelegramMessage(botToken, chatId, "❌ Error al analizar el router.");
+    }
+    return;
+  }
+
+  if (command === "/confirmar_reiniciar") {
+    const device = await getUserDevice(chatId);
+    if (!device) {
+      await sendTelegramMessage(botToken, chatId, "⚠️ No hay dispositivos en línea.");
+      return;
+    }
+    await sendTelegramMessage(botToken, chatId, "⏳ Reiniciando router...");
+    const result = await rebootDevice(device);
+    await sendTelegramMessage(botToken, chatId,
+      result.success
+        ? `🔄 *Reinicio enviado a ${device.name}*\n\nEl router se apagará y volverá en 1-2 minutos.\nLos clientes perderán conexión momentáneamente.`
+        : `❌ ${result.message}`
+    );
+    return;
+  }
+
+  if (command === "/backup") {
+    const device = await getUserDevice(chatId);
+    if (!device) {
+      await sendTelegramMessage(botToken, chatId, "⚠️ No hay dispositivos en línea.");
+      return;
+    }
+    await sendTelegramMessage(botToken, chatId, "⏳ Creando backup...");
+    const result = await backupConfig(device, device.name);
+    await sendTelegramMessage(botToken, chatId,
+      result.success
+        ? `✅ *Backup creado*\n\n${result.message}\n\nLos archivos están en el router.\nDescárgalos por Winbox → Files.`
+        : `❌ ${result.message}`
+    );
+    return;
+  }
+
+  if (command === "/reiniciar") {
+    const device = await getUserDevice(chatId);
+    if (!device) {
+      await sendTelegramMessage(botToken, chatId, "⚠️ No hay dispositivos en línea.");
+      return;
+    }
+    await sendTelegramMessage(botToken, chatId,
+      `⚠️ *¿Reiniciar ${device.name}?*\n\n` +
+      `Se perderá la conexión 1-2 minutos.\n` +
+      `Los clientes se desconectarán.\n\n` +
+      `Para confirmar: /confirmar_reiniciar`
+    );
+    return;
+  }
+
+  if (command === "/logs") {
+    const device = await getUserDevice(chatId);
+    if (!device) {
+      await sendTelegramMessage(botToken, chatId, "⚠️ No hay dispositivos en línea.");
+      return;
+    }
+    await sendTelegramMessage(botToken, chatId, "⏳ Obteniendo logs...");
+    const logs = await getSystemLogs(device, 15);
+    await sendTelegramMessage(botToken, chatId, `📋 *Logs de ${device.name}*\n\n\`${logs}\``);
+    return;
+  }
+
+  if (command === "/backups") {
+    const device = await getUserDevice(chatId);
+    if (!device) {
+      await sendTelegramMessage(botToken, chatId, "⚠️ No hay dispositivos en línea.");
+      return;
+    }
+    const backups = await listBackups(device);
+    if (backups.length === 0) {
+      await sendTelegramMessage(botToken, chatId, "📋 No hay backups. Usa /backup para crear uno.");
+    } else {
+      const lines = backups.map((b) => `📁 ${b.name} — ${b.size} bytes`);
+      await sendTelegramMessage(botToken, chatId, `📋 *Backups en ${device.name}*\n\n${lines.join("\n")}`);
     }
     return;
   }
