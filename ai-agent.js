@@ -3,7 +3,7 @@ const POLL_URL = "http://localhost:7990/api/telegram/poll";
 const DEVICES_URL = "http://localhost:7990/api/devices";
 const METRICS_URL = "http://localhost:7990/api/metrics";
 const POLL_INTERVAL = 15000;
-const ANALYSIS_INTERVAL = 1800000;
+const ANALYSIS_INTERVAL = 86400000;
 const METRICS_INTERVAL = 120000;
 
 let isPolling = false;
@@ -92,7 +92,7 @@ async function start() {
 
   console.log("- Telegram polling: every 15s");
   console.log("- Metrics collection: every 2min");
-  console.log("- Network analysis: every 30min");
+  console.log("- Network analysis: once per day");
 
   pollTelegram();
   collectMetrics();
