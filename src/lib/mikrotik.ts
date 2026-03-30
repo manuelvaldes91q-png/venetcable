@@ -768,18 +768,22 @@ export async function exportConfig(device: MikroTikDevice): Promise<{ success: b
   }
 }
 
-export async function backupConfig(device: MikroTikDevice, name: string): Promise<{ success: boolean; message: string }> {
+export async function backupConfig(device: MikroTikDevice, name: string): Promise<{ success: boolean; message: string; exportContent: string; backupName: string }> {
   const conn = await connectToDevice(device);
   try {
     const date = new Date().toISOString().split("T")[0];
-    const backupName = `${name}-${date}`;
+    const backupName = `${name}-${date}`.replace(/[^a-zA-Z0-9_-]/g, "");
 
     await conn.write(["/system/backup/save", `=name=${backupName}`]);
+
+    const exportResponse = await conn.write("/export");
+    const exportContent = exportResponse.map((line: Record<string, string>) => line[".value"] || Object.values(line)[0] || "").join("\n");
+
     await conn.write(["/export", `=file=${backupName}`]);
 
-    return { success: true, message: `Backup creado: ${backupName}.backup y ${backupName}.rsc` };
+    return { success: true, message: `Backup creado: ${backupName}`, exportContent, backupName };
   } catch (e) {
-    return { success: false, message: `Error al crear backup: ${e}` };
+    return { success: false, message: `Error al crear backup: ${e}`, exportContent: "", backupName: "" };
   } finally {
     await conn.close();
   }
