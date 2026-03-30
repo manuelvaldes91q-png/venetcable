@@ -196,6 +196,15 @@ export async function fetchFullConfig(
   dhcpLeases: Record<string, string>[];
   simpleQueues: Record<string, string>[];
   arpEntries: Record<string, string>[];
+  connectionTracking: Record<string, string> | null;
+  dnsSettings: Record<string, string> | null;
+  ntpSettings: Record<string, string> | null;
+  users: Record<string, string>[];
+  schedulers: Record<string, string>[];
+  logs: Record<string, string>[];
+  dhcpPools: Record<string, string>[];
+  hotspotProfiles: Record<string, string>[];
+  firewallAddressLists: Record<string, string>[];
 }> {
   const safeWrite = async (conn: Awaited<ReturnType<typeof connectToDevice>>, cmd: string): Promise<Record<string, string>[]> => {
     try {
@@ -215,6 +224,15 @@ export async function fetchFullConfig(
     dhcpLeases: [] as Record<string, string>[],
     simpleQueues: [] as Record<string, string>[],
     arpEntries: [] as Record<string, string>[],
+    connectionTracking: null as Record<string, string> | null,
+    dnsSettings: null as Record<string, string> | null,
+    ntpSettings: null as Record<string, string> | null,
+    users: [] as Record<string, string>[],
+    schedulers: [] as Record<string, string>[],
+    logs: [] as Record<string, string>[],
+    dhcpPools: [] as Record<string, string>[],
+    hotspotProfiles: [] as Record<string, string>[],
+    firewallAddressLists: [] as Record<string, string>[],
   };
 
   const conn = await connectToDevice(device);
@@ -224,11 +242,27 @@ export async function fetchFullConfig(
 
     result.interfaces = (await safeWrite(conn, "/interface/print")).slice(0, 20);
     result.routes = (await safeWrite(conn, "/ip/route/print")).slice(0, 15);
-    result.firewallRules = (await safeWrite(conn, "/ip/firewall/filter/print")).slice(0, 20);
-    result.natRules = (await safeWrite(conn, "/ip/firewall/nat/print")).slice(0, 10);
+    result.firewallRules = (await safeWrite(conn, "/ip/firewall/filter/print")).slice(0, 25);
+    result.natRules = (await safeWrite(conn, "/ip/firewall/nat/print")).slice(0, 15);
     result.dhcpLeases = (await safeWrite(conn, "/ip/dhcp-server/lease/print")).slice(0, 20);
-    result.simpleQueues = (await safeWrite(conn, "/queue/simple/print")).slice(0, 15);
-    result.arpEntries = (await safeWrite(conn, "/ip/arp/print")).slice(0, 15);
+    result.simpleQueues = (await safeWrite(conn, "/queue/simple/print")).slice(0, 20);
+    result.arpEntries = (await safeWrite(conn, "/ip/arp/print")).slice(0, 20);
+
+    const connTrack = await safeWrite(conn, "/ip/firewall/connection/print count-only");
+    result.connectionTracking = connTrack[0] || null;
+
+    const dns = await safeWrite(conn, "/ip/dns/print");
+    result.dnsSettings = dns[0] || null;
+
+    const ntp = await safeWrite(conn, "/system/ntp/client/print");
+    result.ntpSettings = ntp[0] || null;
+
+    result.users = (await safeWrite(conn, "/user/print")).slice(0, 10);
+    result.schedulers = (await safeWrite(conn, "/system/scheduler/print")).slice(0, 10);
+    result.logs = (await safeWrite(conn, "/log/print")).slice(0, 15);
+    result.dhcpPools = (await safeWrite(conn, "/ip/pool/print")).slice(0, 10);
+    result.hotspotProfiles = (await safeWrite(conn, "/ip/hotspot/profile/print")).slice(0, 5);
+    result.firewallAddressLists = (await safeWrite(conn, "/ip/firewall/address-list/print")).slice(0, 20);
   } finally {
     await conn.close();
   }
