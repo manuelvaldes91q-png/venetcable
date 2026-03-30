@@ -10,7 +10,8 @@ import {
   fetchFullConfig, fetchSystemResources,
   convertDhcpToStatic, addArpBinding, addSimpleQueue, toggleArp, toggleQueue,
 } from "@/lib/mikrotik";
-import { analyzeMikroTik, formatFindings, answerQuestion } from "@/lib/network-analyzer";
+import { analyzeMikroTik } from "@/lib/network-analyzer";
+import { processMessage } from "@/lib/network-agent";
 
 interface TelegramUpdate {
   update_id: number;
@@ -1005,18 +1006,25 @@ async function processCommand(botToken: string, chatId: string, rawText: string)
 
     if (!question && command === "/ai") {
       await sendTelegramMessage(botToken, chatId,
-        `🤖 *EXPERTO MIKROTIK*\n` +
+        `🤖 *Agente de Redes MikroTik*\n` +
         `━━━━━━━━━━━━━━━━━━━━━\n\n` +
-        `Escribe tu pregunta después de /ai:\n\n` +
-        `📌 Ejemplos:\n` +
-        `  /ai Analiza mi configuración completa\n` +
-        `  /ai ¿Hay algo raro en mi firewall?\n` +
-        `  /ai Dame un script para limitar P2P\n` +
-        `  /ai ¿Por qué el CPU está alto?\n` +
-        `  /ai Optimiza mis colas de velocidad\n` +
-        `  /ai Revisa mis reglas NAT\n` +
-        `  /ai Dame un script para QoS\n` +
-        `  /ai ¿Tengo puertos abiertos peligrosos?`
+        `Háblame como si fuera un ingeniero:\n\n` +
+        `💬 Conversación:\n` +
+        `  /ai hola\n` +
+        `  /ai ¿quién eres?\n\n` +
+        `🔍 Análisis:\n` +
+        `  /ai analiza mi red\n` +
+        `  /ai revisa mi firewall\n` +
+        `  /ai ¿por qué está lento?\n` +
+        `  /ai revisa las colas\n\n` +
+        `🔧 Configuración:\n` +
+        `  /ai necesito vpn\n` +
+        `  /ai cómo hago backup\n` +
+        `  /ai configura dns\n\n` +
+        `🔒 Seguridad:\n` +
+        `  /ai puertos abiertos\n` +
+        `  /ai dns abierto\n` +
+        `  /ai winbox seguro?`
       );
       return;
     }
@@ -1030,17 +1038,15 @@ async function processCommand(botToken: string, chatId: string, rawText: string)
         return;
       }
 
-      await sendTelegramMessage(botToken, chatId, "⏳ Analizando configuración del MikroTik...");
+      await sendTelegramMessage(botToken, chatId, "⏳ Analizando...");
 
       const config = await fetchFullConfig(device);
-      let response: string;
-
-      if (question) {
-        response = answerQuestion(question, config);
-      } else {
-        const findings = analyzeMikroTik(config);
-        response = formatFindings(findings);
-      }
+      const findings = analyzeMikroTik(config);
+      const response = processMessage(question || "analiza", {
+        config,
+        findings,
+        deviceName: device.name,
+      });
 
       await sendTelegramMessage(botToken, chatId, response);
     } catch (e) {
