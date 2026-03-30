@@ -2,71 +2,69 @@ import { db } from "@/db";
 import { devices, systemMetrics, latencyMetrics, antennas, aiLogs } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { fetchFullConfig, toMikroTikDevice } from "@/lib/mikrotik";
-import { analyzeMikroTik, formatFindings } from "@/lib/network-analyzer";
-
-async function collectIssues() {
-  const issues: { type: string; device: string; description: string; severity: string; data: string }[] = [];
-  const allDevices = await db.select().from(devices);
-  const allAntennas = await db.select().from(antennas);
-
-  for (const device of allDevices) {
-    if (device.status === "offline") {
-      issues.push({ type: "device_offline", device: device.name, description: `${device.name} fuera de línea`, severity: "critical", data: `Host: ${device.host}` });
-      continue;
-    }
-
-    const [sys] = await db.select().from(systemMetrics)
-      .where(eq(systemMetrics.deviceId, device.id))
-      .orderBy(desc(systemMetrics.timestamp)).limit(1);
-
-    if (sys) {
-      const cpu = sys.cpuLoad ?? 0;
-      if (cpu > 80) issues.push({ type: "high_cpu", device: device.name, description: `CPU: ${cpu}%`, severity: cpu > 90 ? "critical" : "warning", data: `CPU: ${cpu}%` });
-
-      const memUsed = sys.totalMemory && sys.freeMemory
-        ? ((sys.totalMemory - sys.freeMemory) / sys.totalMemory) * 100 : 0;
-      if (memUsed > 85) issues.push({ type: "high_memory", device: device.name, description: `RAM: ${memUsed.toFixed(0)}%`, severity: "warning", data: `RAM: ${memUsed.toFixed(0)}%` });
-    }
-
-    const [lat] = await db.select().from(latencyMetrics)
-      .where(eq(latencyMetrics.deviceId, device.id))
-      .orderBy(desc(latencyMetrics.timestamp)).limit(1);
-
-    if (lat && (lat.packetLoss ?? 0) > 10) {
-      issues.push({ type: "packet_loss", device: device.name, description: `Pérdida: ${lat.packetLoss}%`, severity: "critical", data: `Pérdida: ${lat.packetLoss}%` });
-    }
-  }
-
-  for (const ant of allAntennas) {
-    if (ant.status === "down" && ant.ip) {
-      issues.push({ type: "antenna_down", device: ant.name, description: `Antena caída: ${ant.name}`, severity: "critical", data: `IP: ${ant.ip}` });
-    }
-  }
-
-  return issues;
-}
+import { analyzeMikroTik, formatFindings, type Finding } from "@/lib/network-analyzer";
 
 export async function runAutonomousAnalysis(): Promise<string | null> {
-  const issues = await collectIssues();
-  if (issues.length === 0) return null;
+  const allDevices = await db.select().from(devices);
+  const onlineDevices = allDevices.filter((d) => d.status === "online");
+  const offlineDevices = allDevices.filter((d) => d.status === "offline");
 
-  const maxSeverity = issues.some((i) => i.severity === "critical") ? "critical" : "warning";
+  if (onlineDevices.length === 0 && offlineDevices.length === 0) return null;
+
+  let allFindings: Finding[] = [];
+
+  for (const device of onlineDevices) {
+    try {
+      const mikrotik = toMikroTikDevice(device);
+      const config = await fetchFullConfig(mikrotik);
+      const findings = analyzeMikroTik(config);
+      allFindings.push(...findings);
+    } catch {}
+  }
+
+  for (const device of offlineDevices) {
+    allFindings.push({
+      severity: "critical", category: "🔴 Dispositivo",
+      issue: `${device.name} (${device.host}) fuera de línea`,
+      solution: "Verifica que el router esté encendido y conectado a la red.",
+    });
+  }
+
+  const allAntennas = await db.select().from(antennas);
+  for (const ant of allAntennas) {
+    if (ant.status === "down" && ant.ip) {
+      allFindings.push({
+        severity: "critical", category: "📡 Antenas",
+        issue: `Antena caída: ${ant.name} (${ant.ip})`,
+        solution: "Verifica la alimentación PoE y el cable de la antena.",
+      });
+    }
+  }
+
+  const [sys] = await db.select().from(systemMetrics)
+    .orderBy(desc(systemMetrics.timestamp)).limit(1);
+  if (sys) {
+    const cpu = sys.cpuLoad ?? 0;
+    if (cpu > 80) {
+      allFindings.push({
+        severity: cpu > 90 ? "critical" : "warning", category: "💻 Sistema",
+        issue: `CPU del router al ${cpu}%`,
+        solution: "Ejecuta /tool profile en el router para ver qué proceso consume CPU.",
+        command: `/tool profile duration=5s`,
+      });
+    }
+  }
+
+  if (allFindings.length === 0) return null;
 
   await db.insert(aiLogs).values({
     analysisType: "autonomous",
-    findings: issues.map((i) => `[${i.severity}] ${i.description}`).join("\n"),
-    recommendations: "Análisis automático",
-    severity: maxSeverity,
+    findings: allFindings.map((f) => `[${f.severity}] ${f.issue}`).join("\n"),
+    recommendations: allFindings.filter((f) => f.command).map((f) => f.command).join("\n"),
+    severity: allFindings.some((f) => f.severity === "critical") ? "critical" : "warning",
   });
 
-  let msg = `🔍 *ANÁLISIS AUTÓNOMO*\n━━━━━━━━━━━━━━━━━━━━━\n📊 Problemas: *${issues.length}*\n━━━━━━━━━━━━━━━━━━━━━\n\n`;
-
-  for (const i of issues) {
-    const icon = i.severity === "critical" ? "🔴" : "🟡";
-    msg += `${icon} ${i.description}\n`;
-  }
-
-  return msg;
+  return formatFindings(allFindings);
 }
 
 export async function analyzeDeviceConfig(deviceId: number): Promise<string> {

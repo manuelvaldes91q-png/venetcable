@@ -6,6 +6,8 @@ interface Finding {
   command?: string;
 }
 
+export type { Finding };
+
 type Config = {
   system: Record<string, string> | null;
   interfaces: Record<string, string>[];
@@ -507,11 +509,11 @@ export function formatFindings(findings: Finding[]): string {
     msg += `${cat}\n`;
     for (const f of catFindings) {
       const icon = f.severity === "critical" ? "🔴" : f.severity === "warning" ? "🟡" : "ℹ️";
-      msg += `${icon} ${f.issue}\n`;
+      msg += `${icon} *${f.issue}*\n`;
       msg += `   💡 ${f.solution}\n`;
       if (f.command) {
-        const shortCmd = f.command.split("\n")[0].substring(0, 60);
-        msg += `   📋 \`${shortCmd}...\`\n`;
+        msg += `   📋 Copia y pega en terminal:\n`;
+        msg += `\`${f.command}\`\n`;
       }
       msg += `\n`;
     }
