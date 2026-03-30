@@ -53,8 +53,8 @@ export default function AiPage() {
       <main style={{ maxWidth: 900, margin: "0 auto", padding: "24px" }}>
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 style={{ fontSize: "20px", fontWeight: 600, color: "#e0e0e0" }}>Asistente IA</h1>
-            <p style={{ fontSize: "12px", color: "#5a5f6a" }}>Análisis inteligente de tu red MikroTik</p>
+            <h1 style={{ fontSize: "20px", fontWeight: 600, color: "#e0e0e0" }}>Analizador de Red</h1>
+            <p style={{ fontSize: "12px", color: "#5a5f6a" }}>Análisis experto de configuración MikroTik — sin IA externa</p>
           </div>
           <button onClick={runAnalysis} disabled={loading} className="btn-primary">
             {loading ? "Analizando..." : "🔄 Actualizar Análisis"}
@@ -63,23 +63,18 @@ export default function AiPage() {
 
         <div className="panel mb-6">
           <div className="panel-header">
-            <h3 style={{ fontSize: "13px", fontWeight: 600, color: "#d8d9da" }}>📊 Diagnóstico Automático</h3>
+            <h3 style={{ fontSize: "13px", fontWeight: 600, color: "#d8d9da" }}>📊 Diagnóstico</h3>
           </div>
           <div className="panel-body">
             {loading ? (
-              <div style={{ textAlign: "center", padding: "24px", color: "#5a5f6a" }}>
-                <p>Analizando la red con IA...</p>
-              </div>
+              <div style={{ textAlign: "center", padding: "24px", color: "#5a5f6a" }}>Analizando...</div>
             ) : analysis ? (
-              <pre style={{
-                fontSize: "13px", color: "#d8d9da", whiteSpace: "pre-wrap",
-                fontFamily: "inherit", lineHeight: 1.6, margin: 0,
-              }}>
+              <pre style={{ fontSize: "13px", color: "#d8d9da", whiteSpace: "pre-wrap", fontFamily: "inherit", lineHeight: 1.6, margin: 0 }}>
                 {analysis}
               </pre>
             ) : (
               <p style={{ color: "#5a5f6a", textAlign: "center", padding: "24px" }}>
-                Presiona &quot;Actualizar Análisis&quot; para diagnosticar la red.
+                Presiona &quot;Actualizar Análisis&quot; para diagnosticar.
               </p>
             )}
           </div>
@@ -87,7 +82,7 @@ export default function AiPage() {
 
         <div className="panel mb-6">
           <div className="panel-header">
-            <h3 style={{ fontSize: "13px", fontWeight: 600, color: "#d8d9da" }}>💬 Preguntar a la IA</h3>
+            <h3 style={{ fontSize: "13px", fontWeight: 600, color: "#d8d9da" }}>🔍 Filtrar por categoría</h3>
           </div>
           <div className="panel-body">
             <form onSubmit={askQuestion} className="flex gap-2 mb-4">
@@ -95,12 +90,12 @@ export default function AiPage() {
                 type="text"
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
-                placeholder="Ej: ¿Por qué el CPU está alto? ¿Cómo optimizar la red?"
+                placeholder="firewall, cpu, colas, puertos, dns, ntp..."
                 className="input-field"
                 style={{ flex: 1 }}
               />
               <button type="submit" disabled={asking || !question.trim()} className="btn-primary">
-                {asking ? "..." : "Preguntar"}
+                {asking ? "..." : "Filtrar"}
               </button>
             </form>
 
@@ -109,7 +104,7 @@ export default function AiPage() {
                 {history.slice().reverse().map((item, i) => (
                   <div key={i} style={{ marginBottom: "16px" }}>
                     <p style={{ fontSize: "12px", fontWeight: 600, color: "#6e9fff", marginBottom: "4px" }}>
-                      🙋 {item.q}
+                      🔍 {item.q}
                     </p>
                     <pre style={{
                       fontSize: "13px", color: "#d8d9da", whiteSpace: "pre-wrap",
@@ -127,21 +122,27 @@ export default function AiPage() {
 
         <div className="panel">
           <div className="panel-header">
-            <h3 style={{ fontSize: "13px", fontWeight: 600, color: "#d8d9da" }}>⚙️ Configuración</h3>
+            <h3 style={{ fontSize: "13px", fontWeight: 600, color: "#d8d9da" }}>📋 Categorías disponibles</h3>
           </div>
           <div className="panel-body">
-            <p style={{ fontSize: "12px", color: "#8e8e8e", marginBottom: "8px" }}>
-              Para usar el asistente de IA, necesitas una API key gratuita de OpenRouter:
-            </p>
-            <ol style={{ fontSize: "12px", color: "#5a5f6a", paddingLeft: "20px", lineHeight: 2 }}>
-              <li>Ve a <span style={{ color: "#6e9fff" }}>https://openrouter.ai</span> y crea una cuenta</li>
-              <li>Ve a Keys y crea una API key</li>
-              <li>Agrega la variable de entorno: <code style={{ backgroundColor: "#1e2028", padding: "2px 6px", borderRadius: 3 }}>OPENROUTER_API_KEY=tu_key</code></li>
-              <li>Reinicia la app</li>
-            </ol>
-            <p style={{ fontSize: "11px", color: "#5a5f6a", marginTop: "8px" }}>
-              Modelo usado: Llama 3.3 8B (gratis)
-            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {[
+                { label: "🔥 Firewall", desc: "Reglas, puertos abiertos" },
+                { label: "🔒 Seguridad", desc: "Winbox, SSH, DNS, proxy" },
+                { label: "⚡ Rendimiento", desc: "FastTrack, CPU, RAM" },
+                { label: "🔌 Interfaces", desc: "Puertos, errores, cable" },
+                { label: "🌐 Red", desc: "NAT, rutas, DNS, ARP" },
+                { label: "📊 ISP", desc: "Colas, DHCP, clientes" },
+                { label: "🔧 Mantenimiento", desc: "NTP, logs, backups" },
+                { label: "💻 Sistema", desc: "CPU, RAM, uptime" },
+                { label: "📡 Antenas", desc: "Estado up/down" },
+              ].map((cat) => (
+                <div key={cat.label} style={{ padding: "8px 12px", backgroundColor: "#141619", borderRadius: 4, border: "1px solid #2c3039" }}>
+                  <p style={{ fontSize: "12px", fontWeight: 600, color: "#d8d9da" }}>{cat.label}</p>
+                  <p style={{ fontSize: "10px", color: "#5a5f6a" }}>{cat.desc}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </main>
