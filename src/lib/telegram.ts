@@ -10,7 +10,7 @@ import {
   fetchFullConfig, fetchSystemResources,
   convertDhcpToStatic, addArpBinding, addSimpleQueue, toggleArp, toggleQueue,
 } from "@/lib/mikrotik";
-import { analyzeWithAI, buildNetworkSnapshot, buildFullMikroTikSnapshot } from "@/lib/ai";
+import { analyzeMikroTik, formatFindings } from "@/lib/network-analyzer";
 
 interface TelegramUpdate {
   update_id: number;
@@ -1030,16 +1030,16 @@ async function processCommand(botToken: string, chatId: string, rawText: string)
         return;
       }
 
-      await sendTelegramMessage(botToken, chatId, "⏳ Analizando configuración completa del MikroTik...");
+      await sendTelegramMessage(botToken, chatId, "⏳ Analizando configuración del MikroTik...");
 
       const config = await fetchFullConfig(device);
-      const snapshot = buildFullMikroTikSnapshot(config);
+      const findings = analyzeMikroTik(config);
+      const response = formatFindings(findings);
 
-      const response = await analyzeWithAI(snapshot, question);
-      await sendTelegramMessage(botToken, chatId, `🤖 *Respuesta del Experto*\n\n${response}`);
+      await sendTelegramMessage(botToken, chatId, response);
     } catch (e) {
-      console.error("AI error:", e);
-      await sendTelegramMessage(botToken, chatId, "❌ Error al conectar con la IA.");
+      console.error("Analysis error:", e);
+      await sendTelegramMessage(botToken, chatId, "❌ Error al analizar el router.");
     }
     return;
   }

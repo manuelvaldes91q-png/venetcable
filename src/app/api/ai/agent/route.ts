@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { runAutonomousAnalysis, getRecentLogs, getKnowledgeBase } from "@/lib/ai-agent";
+import { runAutonomousAnalysis, getRecentLogs } from "@/lib/ai-agent";
 import { db } from "@/db";
 import { telegramConfig, telegramUsers } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -48,8 +48,7 @@ export async function POST() {
 export async function GET() {
   try {
     const logs = await getRecentLogs(10);
-    const knowledge = await getKnowledgeBase();
-    return NextResponse.json({ logs, knowledge });
+    return NextResponse.json({ logs });
   } catch (e) {
     console.error("AI agent GET error:", e);
     return NextResponse.json({ error: "Error" }, { status: 500 });
